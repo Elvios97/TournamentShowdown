@@ -34,6 +34,9 @@ Wenn Champions-Teams nicht angelegt werden können, kann
 ausgeführt werden. Sie legt die benötigten Personal-Team-Berechtigungen und
 Team-Builder-Spalten für `team_sheets` und `pokemon_sets` an.
 
+Wenn Bisaflor/Venusaur nur als Mega-Form erscheint oder `Thick Fat` fehlt,
+`SUPABASE_VENUSAUR_MEGA_FIX.sql` im Supabase SQL Editor ausführen.
+
 Nach Migrationen im Supabase Dashboard prüfen:
 
 - Email/Password Auth ist aktiviert.

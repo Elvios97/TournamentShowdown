@@ -52,6 +52,13 @@ const NATURE_OPTIONS = [
   ['Timid', 'Scheu', 'Spe', 'Atk'],
 ];
 const ABILITY_OVERRIDES = {
+  venusaur: [
+    { pokemon_id: 'venusaur', ability_id: 'overgrow', display_name: 'Overgrow', slot: 1, is_hidden: false },
+    { pokemon_id: 'venusaur', ability_id: 'chlorophyll', display_name: 'Chlorophyll', slot: 3, is_hidden: true },
+  ],
+  'venusaur-mega': [
+    { pokemon_id: 'venusaur-mega', ability_id: 'thick-fat', display_name: 'Thick Fat', slot: 1, is_hidden: false },
+  ],
   charizard: [
     { pokemon_id: 'charizard', ability_id: 'blaze', display_name: 'Blaze', slot: 1, is_hidden: false },
     { pokemon_id: 'charizard', ability_id: 'solar-power', display_name: 'Solar Power', slot: 3, is_hidden: true },
@@ -140,23 +147,40 @@ function makeCatalogMap(catalog, forms) {
   return map;
 }
 
-function formOptionsFor(mon, formsBySpecies, mode = 'standard') {
-  const forms = (formsBySpecies.get(mon.pokemon_id) || []).filter(form => mode !== 'champions' || form.is_champions_legal !== false);
-  if (!forms.length) return '';
-  const current = mon.form_pokemon_id || mon.pokemon_id;
-  return `<label class="builder-field"><span>Form / Mega</span><select class="form-select" id="builder-form">${forms.map(form => `<option value="${esc(form.pokemon_id)}" ${form.pokemon_id === current ? 'selected' : ''}>${esc(form.pokemon_name)}${form.is_mega ? ' · Mega' : ''}</option>`).join('')}</select></label>`;
-}
-
 function selectedFormFor(mon, formsBySpecies) {
   const formId = mon?.form_pokemon_id || mon?.pokemon_id;
   return (formsBySpecies.get(mon?.pokemon_id) || []).find(form => form.pokemon_id === formId) || null;
 }
 
-function formOptionsDisplayFor(mon, formsBySpecies, mode = 'standard') {
-  const forms = (formsBySpecies.get(mon.pokemon_id) || []).filter(form => mode !== 'champions' || form.is_champions_legal !== false);
+function formChoicesFor(mon, formsBySpecies, catalogEntry, mode = 'standard') {
+  const base = {
+    ...(catalogEntry || {}),
+    pokemon_id: mon.pokemon_id,
+    species_pokemon_id: mon.pokemon_id,
+    pokemon_name: catalogEntry?.pokemon_name || mon.pokemon_name,
+    german_name: catalogEntry?.german_name,
+    is_default: true,
+    is_mega: false,
+    is_champions_legal: catalogEntry?.is_champions_legal !== false,
+  };
+  const forms = [base, ...(formsBySpecies.get(mon.pokemon_id) || [])]
+    .filter(form => mode !== 'champions' || form.is_champions_legal !== false);
+  const deduped = new Map();
+  forms.forEach(form => {
+    if (form?.pokemon_id && !deduped.has(form.pokemon_id)) deduped.set(form.pokemon_id, form);
+  });
+  return [...deduped.values()].sort((a, b) => {
+    if (a.pokemon_id === mon.pokemon_id) return -1;
+    if (b.pokemon_id === mon.pokemon_id) return 1;
+    return Number(Boolean(a.is_mega)) - Number(Boolean(b.is_mega)) || String(a.pokemon_name).localeCompare(String(b.pokemon_name), 'de');
+  });
+}
+
+function formOptionsDisplayFor(mon, formsBySpecies, catalogEntry, mode = 'standard') {
+  const forms = formChoicesFor(mon, formsBySpecies, catalogEntry, mode);
   if (!forms.length) return '';
   const current = mon.form_pokemon_id || mon.pokemon_id;
-  return `<label class="builder-field"><span>Form / Mega</span><select class="form-select" id="builder-form">${forms.map(form => `<option value="${esc(form.pokemon_id)}" ${form.pokemon_id === current ? 'selected' : ''}>${esc(pokemonDisplayName(form, form.pokemon_name))}${form.is_mega ? ' - Mega' : ''}</option>`).join('')}</select></label>`;
+  return `<label class="builder-field"><span>Form / Mega</span><select class="form-select" id="builder-form">${forms.map(form => `<option value="${esc(form.pokemon_id)}" ${form.pokemon_id === current ? 'selected' : ''}>${esc(pokemonDisplayName(form, form.pokemon_name))}${form.is_mega ? ' - Mega' : ' - Normal'}</option>`).join('')}</select></label>`;
 }
 
 function megaStoneCandidates(form) {
@@ -409,7 +433,7 @@ function abilityOptionsFor(mon, pokemonAbilities, fallbackAbilities) {
   return [...deduped.values()].sort((a, b) => (Number(a.slot) || 99) - (Number(b.slot) || 99) || String(a.display_name).localeCompare(String(b.display_name), 'de'));
 }
 
-function renderEditor(sheet, mon, catalogEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable) {
+function renderEditor(sheet, mon, catalogEntry, baseCatalogEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable) {
   if (!mon) return '<section class="builder-card builder-empty"><strong>Kein Pokémon ausgewählt.</strong><span>Wähle links einen Slot aus oder füge ein Pokémon hinzu.</span></section>';
   const mode = sheet.team_mode || 'standard';
   const isChampions = mode === 'champions';
@@ -440,7 +464,7 @@ function renderEditor(sheet, mon, catalogEntry, formsBySpecies, references, poke
           <label class="builder-field"><span>Item</span><select class="form-select builder-picker-select" id="builder-item" data-picker-help="builder-item-help" ${editable ? '' : 'disabled'}>${groupItemOptions(filteredReferences.items || [], mon.item || '')}</select>${selectedInfo(filteredReferences.items || [], mon.item, 'builder-item-help')}</label>
           <label class="builder-field"><span>Fähigkeit</span><select class="form-select builder-picker-select" id="builder-ability" data-picker-help="builder-ability-help" ${editable ? '' : 'disabled'}>${selectOptions(abilityOptions, mon.ability || '', ability => `${ability.display_name}${ability.is_hidden ? ' · Hidden' : ''}`)}</select>${selectedInfo(abilityOptions, mon.ability, 'builder-ability-help')}</label>
           <label class="builder-field"><span>Wesen</span><select class="form-select" id="builder-nature" ${editable ? '' : 'disabled'}>${natureOptions(mon.nature || '')}</select></label>
-          ${formOptionsDisplayFor(mon, formsBySpecies, mode)}
+          ${formOptionsDisplayFor(mon, formsBySpecies, baseCatalogEntry || catalogEntry, mode)}
           <label class="builder-field"><span>Level</span><input class="form-input" id="builder-level" type="number" min="1" max="100" value="${isChampions ? 50 : Number(mon.level) || 50}" ${isChampions || !editable ? 'disabled' : ''}></label>
         </div>
         <div class="builder-moves">
@@ -547,6 +571,7 @@ export async function renderTeamBuilderPage(root, sheetId) {
     const render = () => {
       const selected = pokemon.find(mon => mon.id === selectedId) || null;
       const selectedCatalogEntry = selected ? (catalogMap.get(selected.form_pokemon_id) || catalogMap.get(selected.pokemon_id)) : null;
+      const selectedBaseEntry = selected ? catalogMap.get(selected.pokemon_id) : null;
       const modeLabel = (sheet.team_mode || 'standard') === 'champions' ? 'Champions' : 'Standard';
       root.innerHTML = `<div class="team-builder-page">
         <header class="builder-header">
@@ -562,7 +587,7 @@ export async function renderTeamBuilderPage(root, sheetId) {
         <div class="builder-layout">
           ${renderTeamStrip(pokemon, selectedId, editable, catalogMap, sheet)}
           <div class="builder-detail-layout">
-            <main>${showAdd && editable ? renderAddPokemon(catalog, pokemon, sheet.team_mode || 'standard') : renderEditor(sheet, selected, selectedCatalogEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable)}</main>
+            <main>${showAdd && editable ? renderAddPokemon(catalog, pokemon, sheet.team_mode || 'standard') : renderEditor(sheet, selected, selectedCatalogEntry, selectedBaseEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable)}</main>
             <aside class="builder-right-rail">${renderSpeedPanel(pokemon, catalogMap, sheet)}${renderTeamDefensePanel(pokemon, catalogMap)}${renderTeamCheckPanel(pokemon, sheet)}</aside>
           </div>
         </div>

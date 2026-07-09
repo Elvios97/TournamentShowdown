@@ -10,7 +10,7 @@ import { renderTournamentRoute, hideTournamentContextBar } from './features/tour
 import { listMyTournaments } from './features/tournaments/tournaments.js';
 import { renderTournamentsPage, renderTeamsPage, renderTemplatesPage, renderChampionsPage } from './features/hub/hubViews.js?v=20260709w';
 import { renderPublicTeamPage } from './features/publicTeams/publicTeamView.js?v=20260706a';
-import { renderTeamBuilderPage } from './features/teamBuilder/teamBuilderView.js?v=20260709x';
+import { renderTeamBuilderPage } from './features/teamBuilder/teamBuilderView.js?v=20260709y';
 
 const NAV_LABELS = {
   dashboard: 'Dashboard', tournaments: 'Turniere', teams: 'Teams', draft: 'Draft',
