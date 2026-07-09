@@ -1520,6 +1520,14 @@ body.public-team-mode .app-main{padding:0;max-width:none;margin:0}
 .builder-type-row .type-chip{font-size:10px;padding:3px 7px;letter-spacing:.35px}
 .builder-editor-grid{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}.builder-fields{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:10px}.builder-field,.builder-move-grid label,.builder-spread-grid label{display:grid;gap:5px}.builder-field>span,.builder-move-grid span,.builder-spread-grid span{color:var(--text-muted);font-size:10px;font-weight:800;letter-spacing:.55px;text-transform:uppercase}
 .builder-moves{margin-top:16px}.builder-moves h3,.builder-distribution h3{margin-bottom:8px;font-size:15px}.builder-move-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.builder-move-field{min-width:0;padding:10px;border:1px solid rgba(57,75,101,.48);border-radius:12px;background:rgba(7,14,25,.32)}
+.builder-move-field .form-select{min-height:48px;font-size:14px;font-weight:800;color:var(--text)}
+.builder-move-info{display:grid;gap:9px;min-height:96px;margin-top:8px;padding:11px;border:1px solid rgba(83,105,136,.34);border-radius:10px;background:rgba(13,25,41,.82)}
+.builder-move-info p{display:-webkit-box;margin:0;color:var(--text-dim);font-size:12px;line-height:1.45;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.builder-move-empty{display:grid;place-items:center;min-height:66px;color:var(--text-muted);font-size:12px;text-align:center}
+.builder-move-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.builder-move-meta span:not(.type-chip){display:inline-flex;align-items:center;gap:4px;min-height:23px;padding:3px 8px;border:1px solid rgba(83,105,136,.34);border-radius:999px;background:rgba(26,38,58,.78);color:var(--text-dim);font-size:11px;font-weight:800;text-transform:uppercase}
+.builder-move-meta strong{color:var(--text);font-family:'Space Mono',monospace;font-size:11px}
 .builder-picker-select{min-width:0}
 .builder-picker-help{display:-webkit-box;min-height:28px;margin-top:2px;color:var(--text-muted);font-size:10px;line-height:1.35;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .builder-picker-help:empty::before{content:"";display:block}
@@ -1585,6 +1593,7 @@ body.public-team-mode .app-main{padding:0;max-width:none;margin:0}
 .builder-editor-grid{grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
 .builder-fields{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .builder-field .form-input,.builder-field .form-select,.builder-move-grid .form-select{min-height:44px}
+.builder-move-field .form-select{min-height:48px}
 .builder-moves{margin-top:18px}
 .builder-move-grid{gap:12px}
 .builder-picker-note{margin-top:12px}

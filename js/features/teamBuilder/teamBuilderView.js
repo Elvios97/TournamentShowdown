@@ -79,10 +79,10 @@ function selectOptions(entries = [], current = '', labeler = entry => entry.disp
   const options = ['<option value="">Keine Auswahl</option>'];
   entries.forEach(entry => {
     const value = entry[valueKey] || entry.display_name || '';
-    options.push(`<option value="${esc(value)}" ${value === current ? 'selected' : ''}${pickerInfoAttr(entry)}>${esc(labeler(entry))}</option>`);
+    options.push(`<option value="${esc(value)}" ${value === current ? 'selected' : ''}${pickerOptionAttrs(entry)}>${esc(labeler(entry))}</option>`);
   });
   if (current && !entries.some(entry => (entry[valueKey] || entry.display_name) === current)) {
-    options.push(`<option value="${esc(current)}" selected>${esc(current)} · nicht im Profil</option>`);
+    options.push(`<option value="${esc(current)}" selected data-missing="true">${esc(current)} · nicht im Profil</option>`);
   }
   return options.join('');
 }
@@ -95,7 +95,7 @@ function groupItemOptions(items = [], current = '') {
     groups.get(category).push(item);
   });
   const body = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'de')).map(([category, entries]) => (
-    `<optgroup label="${esc(category)}">${entries.map(item => `<option value="${esc(item.display_name)}" ${item.display_name === current ? 'selected' : ''}${pickerInfoAttr(item)}>${esc(item.display_name)}</option>`).join('')}</optgroup>`
+    `<optgroup label="${esc(category)}">${entries.map(item => `<option value="${esc(item.display_name)}" ${item.display_name === current ? 'selected' : ''}${pickerOptionAttrs(item)}>${esc(item.display_name)}</option>`).join('')}</optgroup>`
   )).join('');
   const missing = current && !items.some(item => item.display_name === current) ? `<option value="${esc(current)}" selected>${esc(current)} · nicht im Profil</option>` : '';
   return `<option value="">Kein Item</option>${missing}${body}`;
@@ -299,10 +299,8 @@ function moveOptionsFor(mon, pokemonMoves, moveCatalog, profile) {
 
 function moveOptionLabel(move) {
   const parts = [move.display_name];
-  if (move.type) parts.push(move.type);
-  if (move.damage_class) parts.push(move.damage_class);
-  if (move.power != null) parts.push(`BP ${move.power}`);
-  if (move.accuracy != null) parts.push(`Acc ${move.accuracy}`);
+  if (move.type) parts.push(TYPE_LABELS[move.type] || move.type);
+  if (move.power != null) parts.push(`${move.power} BP`);
   return parts.filter(Boolean).join(' · ');
 }
 
@@ -315,10 +313,57 @@ function pickerInfoAttr(entry) {
   return text ? ` data-info="${esc(text)}"` : '';
 }
 
+function pickerOptionAttrs(entry) {
+  const attrs = [pickerInfoAttr(entry)];
+  if (entry?.type) attrs.push(` data-move-type="${esc(entry.type)}"`);
+  if (entry?.damage_class) attrs.push(` data-move-class="${esc(entry.damage_class)}"`);
+  if (entry?.power != null) attrs.push(` data-move-power="${esc(entry.power)}"`);
+  if (entry?.accuracy != null) attrs.push(` data-move-accuracy="${esc(entry.accuracy)}"`);
+  if (entry?.pp != null) attrs.push(` data-move-pp="${esc(entry.pp)}"`);
+  return attrs.filter(Boolean).join('');
+}
+
 function selectedInfo(entries, value, id, fallback = '') {
   const entry = value ? entries.find(item => item.display_name === value || item.id === value || item.move_id === value) : null;
   const text = pickerInfoText(entry, fallback);
   return `<small class="builder-picker-help" id="${id}">${esc(text)}</small>`;
+}
+
+function moveDetailMarkupFromOption(option) {
+  if (!option?.value) return '<span class="builder-move-empty">Noch kein Move gewählt</span>';
+  const type = option.dataset.moveType || '';
+  const moveClass = option.dataset.moveClass || '';
+  const typeLabel = type ? (TYPE_LABELS[type] || type) : 'Typ offen';
+  const power = option.dataset.movePower || '—';
+  const accuracy = option.dataset.moveAccuracy || '—';
+  const pp = option.dataset.movePp || '—';
+  const effect = option.dataset.info || (option.dataset.missing ? 'Dieser Move ist im aktuellen Profil nicht vorhanden.' : '');
+  return `<div class="builder-move-meta">
+      <span class="type-chip ${type ? `type-${esc(type)}` : ''}">${esc(typeLabel)}</span>
+      ${moveClass ? `<span>${esc(moveClass)}</span>` : '<span>Status/Info offen</span>'}
+      <span>BP <strong>${esc(power)}</strong></span>
+      <span>Acc <strong>${esc(accuracy)}</strong></span>
+      <span>PP <strong>${esc(pp)}</strong></span>
+    </div>
+    <p>${esc(effect || 'Keine Beschreibung hinterlegt.')}</p>`;
+}
+
+function selectedMoveDetail(entries, value, id) {
+  const entry = value ? entries.find(item => item.display_name === value || item.id === value || item.move_id === value) : null;
+  const selected = entry
+    ? {
+      value: entry.display_name || entry.move_id || entry.id,
+      dataset: {
+        moveType: entry.type || '',
+        moveClass: entry.damage_class || '',
+        movePower: entry.power ?? '',
+        moveAccuracy: entry.accuracy ?? '',
+        movePp: entry.pp ?? '',
+        info: pickerInfoText(entry),
+      },
+    }
+    : value ? { value, dataset: { missing: 'true', info: 'Dieser Move ist im aktuellen Profil nicht vorhanden.' } } : null;
+  return `<div class="builder-move-info" id="${id}" aria-live="polite">${moveDetailMarkupFromOption(selected)}</div>`;
 }
 
 function updatePickerHelp(select) {
@@ -327,6 +372,14 @@ function updatePickerHelp(select) {
   const help = document.getElementById(helpId);
   if (!help) return;
   help.textContent = select.selectedOptions?.[0]?.dataset?.info || '';
+}
+
+function updateMoveDetail(select) {
+  const panelId = select?.dataset?.moveDetail;
+  if (!panelId) return;
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  panel.innerHTML = moveDetailMarkupFromOption(select.selectedOptions?.[0]);
 }
 
 function renderAddPokemon(catalog, pokemon, mode) {
@@ -392,7 +445,7 @@ function renderEditor(sheet, mon, catalogEntry, formsBySpecies, references, poke
         </div>
         <div class="builder-moves">
           <h3>Moves</h3>
-          <div class="builder-move-grid">${moves.slice(0, 4).map((move, index) => `<label><span>Move ${index + 1}</span><select class="form-select builder-picker-select" id="builder-move-${index}" data-picker-help="builder-move-${index}-help" ${editable ? '' : 'disabled'}>${selectOptions(moveOptions, move, moveOptionLabel)}</select>${selectedInfo(moveOptions, move, `builder-move-${index}-help`)}</label>`).join('')}</div>
+          <div class="builder-move-grid">${moves.slice(0, 4).map((move, index) => `<label class="builder-move-field"><span>Move ${index + 1}</span><select class="form-select builder-picker-select" id="builder-move-${index}" data-move-detail="builder-move-${index}-detail" ${editable ? '' : 'disabled'}>${selectOptions(moveOptions, move, moveOptionLabel)}</select>${selectedMoveDetail(moveOptions, move, `builder-move-${index}-detail`)}</label>`).join('')}</div>
           <p class="builder-picker-note">${esc(RULE_PROFILE_LABELS[profile] || profile)} · ${moveOptions.length} Moves verfügbar${profile === 'champions' ? ' · Champions-Liste kann später per Override nachgeschärft werden' : ''}</p>
         </div>
       </div>
@@ -668,6 +721,7 @@ export async function renderTeamBuilderPage(root, sheetId) {
     document.addEventListener('change', event => {
       if (event.target?.classList?.contains('builder-picker-select')) {
         updatePickerHelp(event.target);
+        updateMoveDetail(event.target);
       }
       if (event.target?.id === 'builder-form') {
         const selected = pokemon.find(mon => mon.id === selectedId);
