@@ -1,0 +1,198 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OTS Drafting & Turniere</title>
+<link rel="stylesheet" href="styles.css?v=20260709u">
+</head>
+<body>
+
+<aside class="sidebar" id="app-sidebar">
+  <button class="sidebar-brand" onclick="location.hash='/'" aria-label="Zum Dashboard">
+    <span class="brand-mark" aria-hidden="true"><span></span></span>
+    <span><strong>OTS DraftHub</strong><small>Pokémon Drafting</small></span>
+  </button>
+  <nav class="sidebar-nav" aria-label="Hauptnavigation">
+    <a class="nav-item active" href="#/" data-nav="dashboard"><span class="nav-icon">⌂</span>Dashboard</a>
+    <a class="nav-item" href="#/tournaments" data-nav="tournaments"><span class="nav-icon">♜</span>Turniere</a>
+    <a class="nav-item" href="#/teams" data-nav="teams"><span class="nav-icon">◉</span>Teams</a>
+    <a class="nav-item" href="#/champions" data-nav="champions"><span class="nav-icon">♕</span>Champions</a>
+    <a class="nav-item" href="#/templates" data-nav="templates"><span class="nav-icon">▤</span>Vorlagen</a>
+  </nav>
+  <span class="app-version">Public Beta</span>
+</aside>
+
+<header class="topbar">
+  <button class="mobile-menu-button icon-button" id="mobile-menu-button" aria-label="Navigation öffnen" aria-expanded="false">☰</button>
+  <div class="topbar-location"><span>⌂</span><span>/</span><strong id="topbar-view-name">Dashboard</strong></div>
+  <div id="tournament-context-bar"></div>
+  <div class="header-actions">
+    <button class="btn btn-primary topbar-create" onclick="window.openCreateTournamentModal()">+ Neues Turnier</button>
+    <div class="user-menu">
+      <button class="user-menu-trigger" id="user-menu-trigger" aria-expanded="false">
+        <span class="user-avatar" id="header-profile-avatar">OT</span>
+        <span class="user-copy"><strong id="header-profile-name">…</strong><small><span class="status-dot"></span>Online</small></span>
+        <span aria-hidden="true">⌄</span>
+      </button>
+      <div class="user-menu-popover" id="user-menu-popover">
+        <button onclick="window.showProfileSwitchModal()">Profil wechseln</button>
+        <button onclick="window.openDisplayNameModal()">Name ändern</button>
+        <button onclick="window.showProfileSwitchModal()">Profil verwalten</button>
+        <button class="menu-danger" onclick="window.submitLogout()">Logout</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="app-root" class="app-main">
+
+  <!-- ===== DASHBOARD VIEW ===== -->
+  <div class="view active" id="view-dashboard"></div>
+
+  <!-- ===== HUB LIST VIEWS ===== -->
+  <div class="view" id="view-hub"></div>
+
+  <!-- ===== TOURNAMENT VIEW (Tab-Shell) ===== -->
+  <div class="view" id="view-tournament"></div>
+
+</main>
+
+<footer class="legal-footer">
+  <strong>Unofficial fan-made tool.</strong>
+  <span>This is an unofficial fan-made tool and is not affiliated with, endorsed, sponsored, or approved by Nintendo, Game Freak, Creatures Inc., or The Pokémon Company.</span>
+</footer>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Anzeigename setzen/ändern -->
+<div class="modal-overlay" id="modal-display-name">
+  <div class="modal modal-md">
+    <div class="modal-title">Anzeigename</div>
+    <div class="form-group">
+      <label class="form-label">Wie sollen andere dich sehen?</label>
+      <input class="form-input" id="dn-name" placeholder="z.B. Mirco" maxlength="40" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('display-name')">Später</button>
+      <button class="btn btn-primary" onclick="window.submitDisplayName()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Neues Turnier -->
+<div class="modal-overlay" id="modal-create-tournament">
+  <div class="modal">
+    <div class="modal-title">Neues Turnier erstellen</div>
+    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="ct-name" placeholder="z.B. OTS Liga Saison 3" /></div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><textarea class="form-textarea form-textarea-sm" id="ct-desc" placeholder="Optional"></textarea></div>
+    <div class="setup-row">
+      <div class="setup-group">
+        <label class="form-label">Sichtbarkeit</label>
+        <select class="form-select" id="ct-visibility">
+          <option value="private">Privat (nur Mitglieder)</option>
+          <option value="unlisted">Unlisted (per Link)</option>
+          <option value="public">Öffentlich (gelistet)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label><input type="checkbox" id="ct-show-sheets" checked /> Open Sheets sichtbar</label></div>
+    <div class="form-group"><label><input type="checkbox" id="ct-hide-teams" /> Teams bis Start verbergen</label></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('create-tournament')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="window.submitCreateTournament()">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Turnier per Code beitreten -->
+<div class="modal-overlay" id="modal-join-tournament">
+  <div class="modal modal-sm">
+    <div class="modal-title">Turnier beitreten</div>
+    <div class="form-group">
+      <label class="form-label">Einladungscode</label>
+      <input class="form-input invite-code-input" id="jt-code" placeholder="z.B. AB12CD34" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('join-tournament')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="window.submitJoinTournament()">Beitreten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ruleset erstellen/bearbeiten -->
+<div class="modal-overlay" id="modal-ruleset-edit">
+  <div class="modal">
+    <div class="modal-title" id="rsm-title">Ruleset</div>
+    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="rsm-name" /></div>
+    <div class="setup-row">
+      <div class="setup-group">
+        <label class="form-label">Format</label>
+        <select class="form-select" id="rsm-format">
+          <option value="singles">Singles</option><option value="doubles">Doubles</option>
+          <option value="vgc">VGC</option><option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="setup-group">
+        <label class="form-label">Draft-Modus</label>
+        <select class="form-select" id="rsm-draftmode">
+          <option value="none">Kein Draft</option><option value="snake">Snake</option>
+          <option value="linear">Linear</option><option value="random">Zufällig</option>
+        </select>
+      </div>
+    </div>
+    <div class="setup-row">
+      <div class="setup-group"><label class="form-label">Team-Größe</label><input class="form-input" id="rsm-teamsize" type="number" value="6" /></div>
+      <div class="setup-group"><label class="form-label">Punkte-Budget</label><input class="form-input" id="rsm-budget" type="number" placeholder="optional" /></div>
+    </div>
+    <div class="form-group"><label class="form-label">Freitext-Regeln</label><textarea class="form-textarea form-textarea-md" id="rsm-freetext"></textarea></div>
+    <div class="form-group"><label><input type="checkbox" id="rsm-template" /> Als öffentliches Template speichern</label></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('ruleset-edit')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="window.submitRulesetModal()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Einladungscode erstellen -->
+<div class="modal-overlay" id="modal-invite-code">
+  <div class="modal modal-sm">
+    <div class="modal-title">Einladungscode erstellen</div>
+    <div class="form-group">
+      <label class="form-label">Rolle</label>
+      <select class="form-select" id="ic-role">
+        <option value="player">Player</option><option value="viewer">Viewer</option><option value="host">Host</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Max. Verwendungen (optional)</label><input class="form-input" id="ic-maxuses" type="number" placeholder="unbegrenzt" /></div>
+    <div class="invite-result-box" id="ic-result-box">
+      <div class="invite-result-label">Code</div>
+      <div class="invite-result-code" id="ic-result"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('invite-code')">Schließen</button>
+      <button class="btn btn-primary" onclick="window.submitCreateInviteCode()">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pool-Pokémon hinzufügen -->
+<div class="modal-overlay" id="modal-add-pool-pokemon">
+  <div class="modal modal-md">
+    <div class="modal-title">Pokémon zum Pool hinzufügen</div>
+    <div class="form-group"><label class="form-label" for="app-pokemon">Pokémon aus Generation 1</label><select class="form-select" id="app-pokemon"></select></div>
+    <p class="form-hint">Typen und Pokédex-Daten werden automatisch aus dem zentralen Katalog übernommen.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('add-pool-pokemon')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="window.submitAddPoolPokemon()">Hinzufügen</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="login-gate" id="login-gate" aria-live="polite"></div>
+<div class="profile-gate" id="profile-gate" aria-live="polite"></div>
+
+<script type="module" src="js/main.js?v=20260709u"></script>
+</body>
+</html>

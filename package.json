@@ -1,0 +1,16 @@
+{
+  "name": "ots-drafthub",
+  "private": true,
+  "version": "0.9.0-beta",
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/check.mjs",
+    "build": "node scripts/build-static.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "import:champions": "node import-champions-pokewiki.mjs",
+    "import:german-names": "node scripts/import-pokemon-german-names.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
