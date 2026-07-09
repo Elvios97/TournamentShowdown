@@ -86,6 +86,20 @@ Die Anwendung verwendet Hash-Routen wie `#/teams`. Deshalb ist keine
 SPA-Rewrite-Regel auf `index.html` erforderlich. HTTPS muss aktiviert sein,
 damit Clipboard- und Auth-Funktionen zuverlässig arbeiten.
 
+### Cloudflare Workers mit Git Deploy
+
+Wenn Cloudflare einen Deploy Command verlangt:
+
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
+- Version command: `git rev-parse --short HEAD`
+- Root directory: `/`
+
+Die Datei `wrangler.toml` verweist Wrangler auf `dist/` als statisches
+Asset-Verzeichnis. Die Build-Variablen `SUPABASE_URL` und
+`SUPABASE_ANON_KEY` müssen in Cloudflare unter Build-Variablen hinterlegt
+sein.
+
 ## Abnahme vor Veröffentlichung
 
 1. `npm test` ist erfolgreich.
