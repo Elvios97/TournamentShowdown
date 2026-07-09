@@ -1,0 +1,108 @@
+-- Mega ability fixes for Team Builder.
+--
+-- Run this in the Supabase SQL Editor if Mega forms exist but their abilities
+-- are missing in the Builder. Repeatable and safe to run multiple times.
+
+begin;
+
+insert into public.ability_catalog (id, display_name, source)
+values
+  ('adaptability', 'Adaptability', 'manual'),
+  ('aerilate', 'Aerilate', 'manual'),
+  ('delta-stream', 'Delta Stream', 'manual'),
+  ('drought', 'Drought', 'manual'),
+  ('filter', 'Filter', 'manual'),
+  ('healer', 'Healer', 'manual'),
+  ('huge-power', 'Huge Power', 'manual'),
+  ('inner-focus', 'Inner Focus', 'manual'),
+  ('insomnia', 'Insomnia', 'manual'),
+  ('intimidate', 'Intimidate', 'manual'),
+  ('levitate', 'Levitate', 'manual'),
+  ('lightning-rod', 'Lightning Rod', 'manual'),
+  ('magic-bounce', 'Magic Bounce', 'manual'),
+  ('mega-launcher', 'Mega Launcher', 'manual'),
+  ('mold-breaker', 'Mold Breaker', 'manual'),
+  ('no-guard', 'No Guard', 'manual'),
+  ('parental-bond', 'Parental Bond', 'manual'),
+  ('pixilate', 'Pixilate', 'manual'),
+  ('prankster', 'Prankster', 'manual'),
+  ('pure-power', 'Pure Power', 'manual'),
+  ('refrigerate', 'Refrigerate', 'manual'),
+  ('sand-force', 'Sand Force', 'manual'),
+  ('sand-stream', 'Sand Stream', 'manual'),
+  ('scrappy', 'Scrappy', 'manual'),
+  ('shadow-tag', 'Shadow Tag', 'manual'),
+  ('sheer-force', 'Sheer Force', 'manual'),
+  ('shell-armor', 'Shell Armor', 'manual'),
+  ('skill-link', 'Skill Link', 'manual'),
+  ('snow-warning', 'Snow Warning', 'manual'),
+  ('solar-power', 'Solar Power', 'manual'),
+  ('speed-boost', 'Speed Boost', 'manual'),
+  ('steadfast', 'Steadfast', 'manual'),
+  ('strong-jaw', 'Strong Jaw', 'manual'),
+  ('swift-swim', 'Swift Swim', 'manual'),
+  ('technician', 'Technician', 'manual'),
+  ('thick-fat', 'Thick Fat', 'manual'),
+  ('tough-claws', 'Tough Claws', 'manual'),
+  ('trace', 'Trace', 'manual')
+on conflict (id) do update set
+  display_name = excluded.display_name,
+  updated_at = now();
+
+insert into public.pokemon_ability_catalog (pokemon_id, ability_id, display_name, slot, is_hidden, source)
+values
+  ('venusaur-mega', 'thick-fat', 'Thick Fat', 1, false, 'manual'),
+  ('charizard-mega-x', 'tough-claws', 'Tough Claws', 1, false, 'manual'),
+  ('charizard-mega-y', 'drought', 'Drought', 1, false, 'manual'),
+  ('blastoise-mega', 'mega-launcher', 'Mega Launcher', 1, false, 'manual'),
+  ('beedrill-mega', 'adaptability', 'Adaptability', 1, false, 'manual'),
+  ('pidgeot-mega', 'no-guard', 'No Guard', 1, false, 'manual'),
+  ('alakazam-mega', 'trace', 'Trace', 1, false, 'manual'),
+  ('slowbro-mega', 'shell-armor', 'Shell Armor', 1, false, 'manual'),
+  ('gengar-mega', 'shadow-tag', 'Shadow Tag', 1, false, 'manual'),
+  ('kangaskhan-mega', 'parental-bond', 'Parental Bond', 1, false, 'manual'),
+  ('pinsir-mega', 'aerilate', 'Aerilate', 1, false, 'manual'),
+  ('gyarados-mega', 'mold-breaker', 'Mold Breaker', 1, false, 'manual'),
+  ('aerodactyl-mega', 'tough-claws', 'Tough Claws', 1, false, 'manual'),
+  ('mewtwo-mega-x', 'steadfast', 'Steadfast', 1, false, 'manual'),
+  ('mewtwo-mega-y', 'insomnia', 'Insomnia', 1, false, 'manual'),
+  ('ampharos-mega', 'mold-breaker', 'Mold Breaker', 1, false, 'manual'),
+  ('steelix-mega', 'sand-force', 'Sand Force', 1, false, 'manual'),
+  ('scizor-mega', 'technician', 'Technician', 1, false, 'manual'),
+  ('heracross-mega', 'skill-link', 'Skill Link', 1, false, 'manual'),
+  ('houndoom-mega', 'solar-power', 'Solar Power', 1, false, 'manual'),
+  ('tyranitar-mega', 'sand-stream', 'Sand Stream', 1, false, 'manual'),
+  ('sceptile-mega', 'lightning-rod', 'Lightning Rod', 1, false, 'manual'),
+  ('blaziken-mega', 'speed-boost', 'Speed Boost', 1, false, 'manual'),
+  ('swampert-mega', 'swift-swim', 'Swift Swim', 1, false, 'manual'),
+  ('gardevoir-mega', 'pixilate', 'Pixilate', 1, false, 'manual'),
+  ('sableye-mega', 'magic-bounce', 'Magic Bounce', 1, false, 'manual'),
+  ('mawile-mega', 'huge-power', 'Huge Power', 1, false, 'manual'),
+  ('aggron-mega', 'filter', 'Filter', 1, false, 'manual'),
+  ('medicham-mega', 'pure-power', 'Pure Power', 1, false, 'manual'),
+  ('manectric-mega', 'intimidate', 'Intimidate', 1, false, 'manual'),
+  ('sharpedo-mega', 'strong-jaw', 'Strong Jaw', 1, false, 'manual'),
+  ('camerupt-mega', 'sheer-force', 'Sheer Force', 1, false, 'manual'),
+  ('altaria-mega', 'pixilate', 'Pixilate', 1, false, 'manual'),
+  ('banette-mega', 'prankster', 'Prankster', 1, false, 'manual'),
+  ('absol-mega', 'magic-bounce', 'Magic Bounce', 1, false, 'manual'),
+  ('glalie-mega', 'refrigerate', 'Refrigerate', 1, false, 'manual'),
+  ('salamence-mega', 'aerilate', 'Aerilate', 1, false, 'manual'),
+  ('metagross-mega', 'tough-claws', 'Tough Claws', 1, false, 'manual'),
+  ('latias-mega', 'levitate', 'Levitate', 1, false, 'manual'),
+  ('latios-mega', 'levitate', 'Levitate', 1, false, 'manual'),
+  ('rayquaza-mega', 'delta-stream', 'Delta Stream', 1, false, 'manual'),
+  ('lopunny-mega', 'scrappy', 'Scrappy', 1, false, 'manual'),
+  ('garchomp-mega', 'sand-force', 'Sand Force', 1, false, 'manual'),
+  ('lucario-mega', 'adaptability', 'Adaptability', 1, false, 'manual'),
+  ('abomasnow-mega', 'snow-warning', 'Snow Warning', 1, false, 'manual'),
+  ('gallade-mega', 'inner-focus', 'Inner Focus', 1, false, 'manual'),
+  ('audino-mega', 'healer', 'Healer', 1, false, 'manual'),
+  ('diancie-mega', 'magic-bounce', 'Magic Bounce', 1, false, 'manual')
+on conflict (pokemon_id, ability_id) do update set
+  display_name = excluded.display_name,
+  slot = excluded.slot,
+  is_hidden = excluded.is_hidden,
+  updated_at = now();
+
+commit;

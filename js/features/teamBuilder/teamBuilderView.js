@@ -2,7 +2,7 @@ import { getCurrentUserId } from '../../auth.js';
 import { esc, toast } from '../../utils.js';
 import { spriteAttrs } from '../../sprites.js?v=20260709s';
 import { listPokemonCatalog, listPokemonForms } from '../pools/pools.js';
-import { listPokemonAbilities, listPokemonMovesForPokemon, listReferenceCatalogs } from '../catalogs/referenceCatalogs.js';
+import { listPokemonAbilitiesForPokemon, listPokemonMovesForPokemon, listReferenceCatalogs } from '../catalogs/referenceCatalogs.js';
 import {
   getSheet, listPokemonForSheet, updateSheet, addPokemonSet, updatePokemonSet,
   deletePokemonSet, updatePokemonSetOrder, exportSheetAsShowdown,
@@ -69,6 +69,51 @@ const ABILITY_OVERRIDES = {
   'charizard-mega-y': [
     { pokemon_id: 'charizard-mega-y', ability_id: 'drought', display_name: 'Drought', slot: 1, is_hidden: false },
   ],
+  'blastoise-mega': [{ pokemon_id: 'blastoise-mega', ability_id: 'mega-launcher', display_name: 'Mega Launcher', slot: 1, is_hidden: false }],
+  'beedrill-mega': [{ pokemon_id: 'beedrill-mega', ability_id: 'adaptability', display_name: 'Adaptability', slot: 1, is_hidden: false }],
+  'pidgeot-mega': [{ pokemon_id: 'pidgeot-mega', ability_id: 'no-guard', display_name: 'No Guard', slot: 1, is_hidden: false }],
+  'alakazam-mega': [{ pokemon_id: 'alakazam-mega', ability_id: 'trace', display_name: 'Trace', slot: 1, is_hidden: false }],
+  'slowbro-mega': [{ pokemon_id: 'slowbro-mega', ability_id: 'shell-armor', display_name: 'Shell Armor', slot: 1, is_hidden: false }],
+  'gengar-mega': [{ pokemon_id: 'gengar-mega', ability_id: 'shadow-tag', display_name: 'Shadow Tag', slot: 1, is_hidden: false }],
+  'kangaskhan-mega': [{ pokemon_id: 'kangaskhan-mega', ability_id: 'parental-bond', display_name: 'Parental Bond', slot: 1, is_hidden: false }],
+  'pinsir-mega': [{ pokemon_id: 'pinsir-mega', ability_id: 'aerilate', display_name: 'Aerilate', slot: 1, is_hidden: false }],
+  'gyarados-mega': [{ pokemon_id: 'gyarados-mega', ability_id: 'mold-breaker', display_name: 'Mold Breaker', slot: 1, is_hidden: false }],
+  'aerodactyl-mega': [{ pokemon_id: 'aerodactyl-mega', ability_id: 'tough-claws', display_name: 'Tough Claws', slot: 1, is_hidden: false }],
+  'mewtwo-mega-x': [{ pokemon_id: 'mewtwo-mega-x', ability_id: 'steadfast', display_name: 'Steadfast', slot: 1, is_hidden: false }],
+  'mewtwo-mega-y': [{ pokemon_id: 'mewtwo-mega-y', ability_id: 'insomnia', display_name: 'Insomnia', slot: 1, is_hidden: false }],
+  'ampharos-mega': [{ pokemon_id: 'ampharos-mega', ability_id: 'mold-breaker', display_name: 'Mold Breaker', slot: 1, is_hidden: false }],
+  'steelix-mega': [{ pokemon_id: 'steelix-mega', ability_id: 'sand-force', display_name: 'Sand Force', slot: 1, is_hidden: false }],
+  'scizor-mega': [{ pokemon_id: 'scizor-mega', ability_id: 'technician', display_name: 'Technician', slot: 1, is_hidden: false }],
+  'heracross-mega': [{ pokemon_id: 'heracross-mega', ability_id: 'skill-link', display_name: 'Skill Link', slot: 1, is_hidden: false }],
+  'houndoom-mega': [{ pokemon_id: 'houndoom-mega', ability_id: 'solar-power', display_name: 'Solar Power', slot: 1, is_hidden: false }],
+  'tyranitar-mega': [{ pokemon_id: 'tyranitar-mega', ability_id: 'sand-stream', display_name: 'Sand Stream', slot: 1, is_hidden: false }],
+  'sceptile-mega': [{ pokemon_id: 'sceptile-mega', ability_id: 'lightning-rod', display_name: 'Lightning Rod', slot: 1, is_hidden: false }],
+  'blaziken-mega': [{ pokemon_id: 'blaziken-mega', ability_id: 'speed-boost', display_name: 'Speed Boost', slot: 1, is_hidden: false }],
+  'swampert-mega': [{ pokemon_id: 'swampert-mega', ability_id: 'swift-swim', display_name: 'Swift Swim', slot: 1, is_hidden: false }],
+  'gardevoir-mega': [{ pokemon_id: 'gardevoir-mega', ability_id: 'pixilate', display_name: 'Pixilate', slot: 1, is_hidden: false }],
+  'sableye-mega': [{ pokemon_id: 'sableye-mega', ability_id: 'magic-bounce', display_name: 'Magic Bounce', slot: 1, is_hidden: false }],
+  'mawile-mega': [{ pokemon_id: 'mawile-mega', ability_id: 'huge-power', display_name: 'Huge Power', slot: 1, is_hidden: false }],
+  'aggron-mega': [{ pokemon_id: 'aggron-mega', ability_id: 'filter', display_name: 'Filter', slot: 1, is_hidden: false }],
+  'medicham-mega': [{ pokemon_id: 'medicham-mega', ability_id: 'pure-power', display_name: 'Pure Power', slot: 1, is_hidden: false }],
+  'manectric-mega': [{ pokemon_id: 'manectric-mega', ability_id: 'intimidate', display_name: 'Intimidate', slot: 1, is_hidden: false }],
+  'sharpedo-mega': [{ pokemon_id: 'sharpedo-mega', ability_id: 'strong-jaw', display_name: 'Strong Jaw', slot: 1, is_hidden: false }],
+  'camerupt-mega': [{ pokemon_id: 'camerupt-mega', ability_id: 'sheer-force', display_name: 'Sheer Force', slot: 1, is_hidden: false }],
+  'altaria-mega': [{ pokemon_id: 'altaria-mega', ability_id: 'pixilate', display_name: 'Pixilate', slot: 1, is_hidden: false }],
+  'banette-mega': [{ pokemon_id: 'banette-mega', ability_id: 'prankster', display_name: 'Prankster', slot: 1, is_hidden: false }],
+  'absol-mega': [{ pokemon_id: 'absol-mega', ability_id: 'magic-bounce', display_name: 'Magic Bounce', slot: 1, is_hidden: false }],
+  'glalie-mega': [{ pokemon_id: 'glalie-mega', ability_id: 'refrigerate', display_name: 'Refrigerate', slot: 1, is_hidden: false }],
+  'salamence-mega': [{ pokemon_id: 'salamence-mega', ability_id: 'aerilate', display_name: 'Aerilate', slot: 1, is_hidden: false }],
+  'metagross-mega': [{ pokemon_id: 'metagross-mega', ability_id: 'tough-claws', display_name: 'Tough Claws', slot: 1, is_hidden: false }],
+  'latias-mega': [{ pokemon_id: 'latias-mega', ability_id: 'levitate', display_name: 'Levitate', slot: 1, is_hidden: false }],
+  'latios-mega': [{ pokemon_id: 'latios-mega', ability_id: 'levitate', display_name: 'Levitate', slot: 1, is_hidden: false }],
+  'rayquaza-mega': [{ pokemon_id: 'rayquaza-mega', ability_id: 'delta-stream', display_name: 'Delta Stream', slot: 1, is_hidden: false }],
+  'lopunny-mega': [{ pokemon_id: 'lopunny-mega', ability_id: 'scrappy', display_name: 'Scrappy', slot: 1, is_hidden: false }],
+  'garchomp-mega': [{ pokemon_id: 'garchomp-mega', ability_id: 'sand-force', display_name: 'Sand Force', slot: 1, is_hidden: false }],
+  'lucario-mega': [{ pokemon_id: 'lucario-mega', ability_id: 'adaptability', display_name: 'Adaptability', slot: 1, is_hidden: false }],
+  'abomasnow-mega': [{ pokemon_id: 'abomasnow-mega', ability_id: 'snow-warning', display_name: 'Snow Warning', slot: 1, is_hidden: false }],
+  'gallade-mega': [{ pokemon_id: 'gallade-mega', ability_id: 'inner-focus', display_name: 'Inner Focus', slot: 1, is_hidden: false }],
+  'audino-mega': [{ pokemon_id: 'audino-mega', ability_id: 'healer', display_name: 'Healer', slot: 1, is_hidden: false }],
+  'diancie-mega': [{ pokemon_id: 'diancie-mega', ability_id: 'magic-bounce', display_name: 'Magic Bounce', slot: 1, is_hidden: false }],
 };
 const NON_BATTLE_ITEM_PATTERN = /(tm|hm|tr|technical|machine|mail|letter|mulch|fossil|apricorn|shard|repel|escape|rope|rod|bike|bicycle|ticket|pass|key|card|parcel|souvenir|photo|flute|doll|honey|nectar|exp\.?\s*share|exp-share|experience|candy|rare-candy|incense)/i;
 const BATTLE_ITEM_CATEGORY_PATTERN = /(held|battle|berry|berries|mega|jewel|plate|memory|drive|z-crystal|choice|type-enhancement|species-specific|training)/i;
@@ -539,13 +584,12 @@ export async function renderTeamBuilderPage(root, sheetId) {
   let showAdd = false;
 
   try {
-    const [sheet, pokemon, catalog, formsResult, references, pokemonAbilities] = await Promise.all([
+    const [sheet, pokemon, catalog, formsResult, references] = await Promise.all([
       getSheet(sheetId),
       listPokemonForSheet(sheetId),
       listPokemonCatalog().catch(() => []),
       listPokemonForms().catch(() => []),
       listReferenceCatalogs().catch(() => ({ moves: [], items: [], abilities: [] })),
-      listPokemonAbilities().catch(() => []),
     ]);
     if (!sheet) {
       root.innerHTML = pageError('Team nicht gefunden', 'Das Team ist nicht sichtbar oder wurde gelöscht.');
@@ -559,12 +603,13 @@ export async function renderTeamBuilderPage(root, sheetId) {
       if (!formsBySpecies.has(form.species_pokemon_id)) formsBySpecies.set(form.species_pokemon_id, []);
       formsBySpecies.get(form.species_pokemon_id).push(form);
     });
-    const moveIdsForTeam = () => {
+    const formIdsForTeam = () => {
       const speciesIds = new Set(pokemon.map(mon => mon.pokemon_id).filter(Boolean));
       const formIds = forms.filter(form => speciesIds.has(form.species_pokemon_id)).map(form => form.pokemon_id);
       return [...speciesIds, ...formIds];
     };
-    let pokemonMoves = await listPokemonMovesForPokemon(moveIdsForTeam()).catch(() => []);
+    let pokemonAbilities = await listPokemonAbilitiesForPokemon(formIdsForTeam()).catch(() => []);
+    let pokemonMoves = await listPokemonMovesForPokemon(formIdsForTeam()).catch(() => []);
     const catalogMap = makeCatalogMap(catalog, forms);
     selectedId = pokemon[0]?.id || null;
 
@@ -637,7 +682,8 @@ export async function renderTeamBuilderPage(root, sheetId) {
       if (!selected) { toast('Bitte Pokémon auswählen.', 'error'); return; }
       const created = await addPokemonSet(sheet.id, selected, pokemon.length);
       pokemon.push(created);
-      pokemonMoves = await listPokemonMovesForPokemon(moveIdsForTeam()).catch(() => pokemonMoves);
+      pokemonAbilities = await listPokemonAbilitiesForPokemon(formIdsForTeam()).catch(() => pokemonAbilities);
+      pokemonMoves = await listPokemonMovesForPokemon(formIdsForTeam()).catch(() => pokemonMoves);
       selectedId = created.id;
       showAdd = false;
       toast(`${selected.pokemon_name} hinzugefügt`, 'success');

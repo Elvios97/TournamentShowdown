@@ -37,6 +37,10 @@ Team-Builder-Spalten für `team_sheets` und `pokemon_sets` an.
 Wenn Bisaflor/Venusaur nur als Mega-Form erscheint oder `Thick Fat` fehlt,
 `SUPABASE_VENUSAUR_MEGA_FIX.sql` im Supabase SQL Editor ausführen.
 
+Wenn Mega-Fähigkeiten allgemein fehlen, `SUPABASE_MEGA_ABILITY_FIXES.sql`
+ausführen. Die Datei ergänzt die offiziellen Mega-Form-Fähigkeiten für den
+Team Builder.
+
 Nach Migrationen im Supabase Dashboard prüfen:
 
 - Email/Password Auth ist aktiviert.
