@@ -16,17 +16,19 @@ function renderLogin({ message = '', loading = false } = {}) {
       <h1>Anmelden</h1>
       <p>Dein Hub für Pokémon-Drafts, Turniere und geteilte Teams.</p>
       ${message ? `<div class="profile-alert">${esc(message)}</div>` : ''}
-      <div class="form-group">
-        <label class="form-label" for="login-username">Benutzername</label>
-        <input class="form-input" id="login-username" autocomplete="username" placeholder="z.B. mirco" ${loading ? 'disabled' : ''} />
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="login-password">Passwort</label>
-        <input class="form-input" id="login-password" type="password" autocomplete="current-password" ${loading ? 'disabled' : ''} />
-      </div>
-      <button class="btn btn-primary" style="width:100%" onclick="window.submitLogin()" ${loading ? 'disabled' : ''}>
-        ${loading ? 'Anmeldung läuft…' : 'Anmelden'}
-      </button>
+      <form onsubmit="event.preventDefault(); window.submitLogin();">
+        <div class="form-group">
+          <label class="form-label" for="login-username">Benutzername</label>
+          <input class="form-input" id="login-username" autocomplete="username" placeholder="z.B. mirco" ${loading ? 'disabled' : ''} />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="login-password">Passwort</label>
+          <input class="form-input" id="login-password" type="password" autocomplete="current-password" ${loading ? 'disabled' : ''} />
+        </div>
+        <button class="btn btn-primary" type="submit" style="width:100%" ${loading ? 'disabled' : ''}>
+          ${loading ? 'Anmeldung läuft…' : 'Anmelden'}
+        </button>
+      </form>
       <div class="profile-note">Die Anmeldung wird sicher über Supabase Auth verarbeitet. Dein Passwort wird nicht in dieser App gespeichert.</div>
       <div class="legal-inline">Unofficial fan-made tool. Not affiliated with Nintendo, Game Freak, Creatures Inc., or The Pokémon Company.</div>
     </div>`;

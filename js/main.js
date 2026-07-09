@@ -4,7 +4,7 @@ import { navigate, onRoute, onNotFound, startRouter } from './router.js';
 import { initModalBackdrops, toast } from './utils.js';
 import { initProfileFeature, maybePromptDisplayName } from './features/profile/profile.js';
 import { initProfileSelectorUi } from './ui/profileSelector.js';
-import { ensureLoggedIn, initLoginUi } from './ui/login.js?v=20260706a';
+import { ensureLoggedIn, initLoginUi } from './ui/login.js?v=20260709v';
 import { initDashboardFeature, renderDashboard } from './features/dashboard/dashboard.js?v=20260709r';
 import { renderTournamentRoute, hideTournamentContextBar } from './features/tournaments/tournamentView.js?v=20260705b';
 import { listMyTournaments } from './features/tournaments/tournaments.js';
