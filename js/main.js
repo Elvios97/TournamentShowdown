@@ -8,7 +8,7 @@ import { ensureLoggedIn, initLoginUi } from './ui/login.js?v=20260709v';
 import { initDashboardFeature, renderDashboard } from './features/dashboard/dashboard.js?v=20260709r';
 import { renderTournamentRoute, hideTournamentContextBar } from './features/tournaments/tournamentView.js?v=20260705b';
 import { listMyTournaments } from './features/tournaments/tournaments.js';
-import { renderTournamentsPage, renderTeamsPage, renderTemplatesPage, renderChampionsPage } from './features/hub/hubViews.js?v=20260706b';
+import { renderTournamentsPage, renderTeamsPage, renderTemplatesPage, renderChampionsPage } from './features/hub/hubViews.js?v=20260709w';
 import { renderPublicTeamPage } from './features/publicTeams/publicTeamView.js?v=20260706a';
 import { renderTeamBuilderPage } from './features/teamBuilder/teamBuilderView.js?v=20260709u';
 

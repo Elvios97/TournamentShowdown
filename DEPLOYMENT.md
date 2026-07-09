@@ -29,6 +29,11 @@ Migrationen für Login/Profile, persönliche Teams, Sichtbarkeit, Team-Marker,
 Turnierberechtigungen, Pokémon-Katalog, Matches, Pool-Rankings, Realtime-Draft,
 Trades, Regelset-Kontext und Referenzkataloge.
 
+Wenn Champions-Teams nicht angelegt werden können, kann
+`SUPABASE_CHAMPIONS_TEAM_BUILDER_SETUP.sql` als wiederholbare Reparaturmigration
+ausgeführt werden. Sie legt die benötigten Personal-Team-Berechtigungen und
+Team-Builder-Spalten für `team_sheets` und `pokemon_sets` an.
+
 Nach Migrationen im Supabase Dashboard prüfen:
 
 - Email/Password Auth ist aktiviert.

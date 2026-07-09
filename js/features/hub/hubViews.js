@@ -422,7 +422,9 @@ export async function renderChampionsPage(root) {
         toast('Champions-Team angelegt', 'success');
         location.hash = `/builder/${sheet.id}`;
       } catch (err) {
-        const hint = /team_mode|battle_format|schema cache|column/i.test(err.message || '') ? ' Bitte zuerst SUPABASE_TEAM_BUILDER_STATS.sql in Supabase ausführen.' : '';
+        const hint = /team_mode|battle_format|rules_profile|schema cache|column|null value|row-level security/i.test(err.message || '')
+          ? ' Bitte zuerst SUPABASE_CHAMPIONS_TEAM_BUILDER_SETUP.sql in Supabase ausführen.'
+          : '';
         toast('Champions-Team konnte nicht angelegt werden.' + hint, 'error');
       }
     };
