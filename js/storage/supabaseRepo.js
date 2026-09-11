@@ -13,14 +13,22 @@ export async function selectOne(table, match) {
   return data;
 }
 
-export async function selectMany(table, { match = {}, order = null, ascending = true } = {}) {
+export async function selectMany(table, { match = {}, order = null, ascending = true, pageSize = 1000 } = {}) {
   const supabase = getSupabase();
-  let q = supabase.from(table).select('*');
-  Object.entries(match).forEach(([k, v]) => { q = v === null ? q.is(k, null) : q.eq(k, v); });
-  if (order) q = q.order(order, { ascending });
-  const { data, error } = await q;
-  if (error) throw error;
-  return data || [];
+  const rows = [];
+  let from = 0;
+  while (true) {
+    let q = supabase.from(table).select('*');
+    Object.entries(match).forEach(([k, v]) => { q = v === null ? q.is(k, null) : q.eq(k, v); });
+    if (order) q = q.order(order, { ascending });
+    q = q.range(from, from + pageSize - 1);
+    const { data, error } = await q;
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return rows;
 }
 
 export async function insertRow(table, row) {

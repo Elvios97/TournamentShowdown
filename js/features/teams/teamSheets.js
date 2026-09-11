@@ -4,6 +4,7 @@ import { selectMany, selectOne, insertRow, updateRow, deleteRow, rpc } from '../
 import { parseShowdown, exportShowdown } from '../../showdownParser.js';
 import { toPokemonId } from '../../sprites.js';
 import { normalizeImportedTeam } from './teamImportValidation.js?v=20260705';
+import { championsDvsForImport } from './championsImport.js?v=20260710b';
 
 export async function listSheetsForTournament(tournamentId) {
   return selectMany('team_sheets', { match: { tournament_id: tournamentId }, order: 'created_at' });
@@ -12,6 +13,11 @@ export async function listSheetsForTournament(tournamentId) {
 export async function listPersonalSheets() {
   const userId = getCurrentUserId();
   return selectMany('team_sheets', { match: { profile_id: userId, tournament_id: null }, order: 'created_at' });
+}
+
+export async function listOwnedSheets() {
+  const userId = getCurrentUserId();
+  return selectMany('team_sheets', { match: { profile_id: userId }, order: 'created_at' });
 }
 
 export async function listPublicSheets() {
@@ -110,17 +116,40 @@ export async function copyPersonalSheetToTournament(sourceSheetId, tournamentId,
 }
 
 /** Ersetzt den kompletten Pokémon-Satz eines Sheets durch einen geparsten Showdown-Export. */
+function normalizeShowdownPokemonForImport(mon = {}) {
+  const rawName = String(mon.name || '').trim();
+  const megaMatch = rawName.match(/^Mega\s+(.+)$/i);
+  const pokemonName = megaMatch ? megaMatch[1].trim() : rawName;
+  const item = String(mon.item || '').trim() || (megaMatch ? `${pokemonName.replace(/\s+/g, '')}ite` : '');
+  return { pokemonName, pokemonId: toPokemonId(pokemonName), item };
+}
+
 export async function importShowdownIntoSheet(sheetId, showdownText) {
   if (typeof showdownText !== 'string' || showdownText.length > 100_000) {
     throw new Error('Der Showdown-Import ist leer oder größer als 100 KB.');
   }
   const parsed = parseShowdown(showdownText);
   if (!parsed.length) throw new Error('Showdown-Format nicht erkannt.');
-  return replacePokemonSets(sheetId, parsed.map(mon => ({
-    pokemon_id: toPokemonId(mon.name), pokemon_name: mon.name,
-    nickname: mon.nickname, item: mon.item, ability: mon.ability,
-    tera_type: mon.tera, nature: mon.nature, evs: mon.evs, moves: mon.moves,
-  })));
+  const sheet = await getSheet(sheetId).catch(() => null);
+  const isChampions = (sheet?.team_mode || 'standard') === 'champions';
+  await replacePokemonSets(sheetId, parsed.map(mon => {
+    const normalized = normalizeShowdownPokemonForImport(mon);
+    return {
+      pokemon_id: normalized.pokemonId, pokemon_name: normalized.pokemonName,
+      nickname: mon.nickname, item: normalized.item, ability: mon.ability,
+      tera_type: mon.tera, nature: mon.nature, evs: mon.evs, moves: mon.moves,
+    };
+  }));
+  const rows = await listPokemonForSheet(sheetId);
+  await Promise.all(rows.map((row, index) => {
+    const source = parsed[index];
+    if (!source) return null;
+    const patch = {};
+    if (source.ivs && Object.keys(source.ivs).length) patch.ivs = source.ivs;
+    if (isChampions) patch.dvs = championsDvsForImport(source);
+    return Object.keys(patch).length ? updatePokemonSet(row.id, patch) : null;
+  }).filter(Boolean));
+  return listPokemonForSheet(sheetId);
 }
 
 export async function replacePokemonSets(sheetId, pokemonList) {

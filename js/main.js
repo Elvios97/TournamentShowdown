@@ -5,12 +5,12 @@ import { initModalBackdrops, toast } from './utils.js';
 import { initProfileFeature, maybePromptDisplayName } from './features/profile/profile.js';
 import { initProfileSelectorUi } from './ui/profileSelector.js';
 import { ensureLoggedIn, initLoginUi } from './ui/login.js?v=20260709v';
-import { initDashboardFeature, renderDashboard } from './features/dashboard/dashboard.js?v=20260709r';
+import { initDashboardFeature, renderDashboard } from './features/dashboard/dashboard.js?v=20260712a';
 import { renderTournamentRoute, hideTournamentContextBar } from './features/tournaments/tournamentView.js?v=20260705b';
 import { listMyTournaments } from './features/tournaments/tournaments.js';
-import { renderTournamentsPage, renderTeamsPage, renderTemplatesPage, renderChampionsPage } from './features/hub/hubViews.js?v=20260709w';
+import { renderTournamentsPage, renderTeamsPage, renderTemplatesPage, renderChampionsPage } from './features/hub/hubViews.js?v=20260710b';
 import { renderPublicTeamPage } from './features/publicTeams/publicTeamView.js?v=20260706a';
-import { renderTeamBuilderPage } from './features/teamBuilder/teamBuilderView.js?v=20260709z';
+import { renderTeamBuilderPage } from './features/teamBuilder/teamBuilderView.js?v=20260713c';
 
 const NAV_LABELS = {
   dashboard: 'Dashboard', tournaments: 'Turniere', teams: 'Teams', draft: 'Draft',
@@ -27,7 +27,7 @@ function updatePrimaryNavigation() {
   if (NAV_LABELS[parts[0]]) active = parts[0];
   if (parts[0] === 'builder') active = 'builder';
   if (parts[0] === 't') active = parts[2] || 'tournaments';
-  const activeNav = TOURNAMENT_TABS.has(active) ? 'tournaments' : active;
+  const activeNav = parts[0] === 't' && TOURNAMENT_TABS.has(active) ? 'tournaments' : active;
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
     const selected = item.dataset.nav === (activeNav === 'builder' ? 'teams' : activeNav);
     item.classList.toggle('active', selected);

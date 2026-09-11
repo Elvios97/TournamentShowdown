@@ -1,10 +1,10 @@
 import { esc, toast } from '../../utils.js';
 import { listMyTournaments, listPublicTournaments } from '../tournaments/tournaments.js';
 import {
-  listPersonalSheets, listPublicSheets, listPersonalSheetsByMode, listPublicSheetsByMode, listPokemonForSheet, createPersonalSheet,
+  listPersonalSheets, listOwnedSheets, listPublicSheets, listPersonalSheetsByMode, listPublicSheetsByMode, listPokemonForSheet, createPersonalSheet,
   updateSheet, deleteSheet, importShowdownIntoSheet, exportSheetAsShowdown,
   updatePokemonSet, deletePokemonSet, duplicatePersonalSheet, addPokemonSet, updatePokemonSetOrder,
-} from '../teams/teamSheets.js?v=20260708a';
+} from '../teams/teamSheets.js?v=20260710e';
 import { exportTeamSheet, importTeamSheetFile } from '../importExport/importExport.js?v=20260705b';
 import { listPublicRulesetTemplates } from '../rulesets/rulesets.js';
 import { listPublicPoolTemplates, listPoolPokemon, listPokemonCatalog } from '../pools/pools.js';
@@ -63,15 +63,43 @@ export async function renderTournamentsPage(root) {
   }
 }
 
+function teamIsChampions(sheet) {
+  return (sheet.team_mode || 'standard') === 'champions' || sheet.rules_profile === 'champions';
+}
+
+function teamModeLabel(sheet) {
+  if (teamIsChampions(sheet)) return 'Champions';
+  if (sheet.rules_profile === 'current') return 'Current Gen';
+  if (sheet.rules_profile === 'open') return 'Open Sheet';
+  return 'Standard';
+}
+
+function teamFormatLabel(sheet) {
+  return (sheet.battle_format || 'singles') === 'doubles' ? 'Doubles' : 'Singles';
+}
+
 function teamCard(sheet, pokemon, owner = '', shared = false) {
   const isPublic = shared || sheet.visibility === 'public';
+  const isChampions = teamIsChampions(sheet);
+  const teamMode = isChampions ? 'champions' : 'standard';
+  const scope = sheet.tournament_id ? 'tournament' : 'personal';
   const meta = shared ? `von ${esc(owner || 'Trainer')}` : `${pokemon.length}/6 Pokémon`;
   const action = shared ? `window.openHubTeam('${sheet.id}', true)` : `location.hash='/builder/${sheet.id}'`;
-  return `<button type="button" class="hub-team-card ${shared ? 'shared' : 'own'}" data-team-id="${sheet.id}" aria-pressed="false" onclick="${action}">
-    <div class="hub-team-head">${renderTeamBall(sheet.ball_variant, 'team-list-ball')}<span class="hub-team-copy"><strong>${esc(sheet.title || 'Team')}</strong><small>${meta}</small></span><span class="badge ${isPublic ? 'badge-success' : ''}">${isPublic ? 'Geteilt' : 'Privat'}</span></div>
+  return `<button type="button" class="hub-team-card ${shared ? 'shared' : 'own'}" data-team-id="${sheet.id}" data-team-mode="${teamMode}" data-team-scope="${scope}" aria-pressed="false" onclick="${action}">
+    <div class="hub-team-head">${renderTeamBall(sheet.ball_variant, 'team-list-ball')}<span class="hub-team-copy"><strong>${esc(sheet.title || 'Team')}</strong><small>${meta}</small></span><span class="hub-team-badges"><span class="badge ${isChampions ? 'badge-info' : ''}">${esc(teamModeLabel(sheet))}</span><span class="badge badge-primary">${esc(teamFormatLabel(sheet))}</span>${sheet.tournament_id ? '<span class="badge badge-warning">Turnier</span>' : ''}<span class="badge ${isPublic ? 'badge-success' : ''}">${isPublic ? 'Geteilt' : 'Privat'}</span></span></div>
     ${pokemonPreview(pokemon)}
     <span class="hub-team-card-footer"><span>${shared ? 'Team ansehen' : 'Im Builder öffnen'}</span><span aria-hidden="true">›</span></span>
   </button>`;
+}
+
+function teamFilterBar(teams) {
+  const standard = teams.filter(team => !teamIsChampions(team)).length;
+  const champions = teams.filter(team => teamIsChampions(team)).length;
+  return `<div class="hub-team-filter" role="tablist" aria-label="Teamfilter">
+    <button type="button" class="active" role="tab" aria-selected="true" data-team-filter="all" onclick="window.filterHubTeams('all')">Alle <span>${teams.length}</span></button>
+    <button type="button" role="tab" aria-selected="false" data-team-filter="standard" onclick="window.filterHubTeams('standard')">Standard <span>${standard}</span></button>
+    <button type="button" role="tab" aria-selected="false" data-team-filter="champions" onclick="window.filterHubTeams('champions')">Champions <span>${champions}</span></button>
+  </div>`;
 }
 
 const EV_STATS = [
@@ -141,7 +169,7 @@ function renderTeamCheck(pokemon, ruleset, editable) {
 export async function renderTeamsPage(root) {
   root.innerHTML = pageHeader('Teams', 'Eigene Teams bearbeiten und geteilte Teams ansehen.', '<button class="btn btn-primary" onclick="window.createHubTeam()">+ Team anlegen</button>') + '<div class="hub-loading">Teams werden geladen…</div>';
   try {
-    const [mine, shared, profiles, catalog, rulesets, referenceData] = await Promise.all([listPersonalSheetsByMode('standard'), listPublicSheetsByMode('standard'), listVisibleProfiles().catch(() => []), listPokemonCatalog().catch(() => []), listPublicRulesetTemplates().catch(() => []), listReferenceCatalogs().catch(() => ({ moves: [], items: [], abilities: [] }))]);
+    const [mine, shared, profiles, catalog, rulesets, referenceData] = await Promise.all([listOwnedSheets(), listPublicSheets(), listVisibleProfiles().catch(() => []), listPokemonCatalog().catch(() => []), listPublicRulesetTemplates().catch(() => []), listReferenceCatalogs().catch(() => ({ moves: [], items: [], abilities: [] }))]);
     const names = new Map();
     profiles.forEach(p => { if (p.id) names.set(p.id, p.display_name); if (p.user_id) names.set(p.user_id, p.display_name); });
     const ownIds = new Set(mine.map(sheet => sheet.id));
@@ -156,6 +184,7 @@ export async function renderTeamsPage(root) {
     });
     root.innerHTML = `
       ${pageHeader('Teams', 'Eigene Teams bearbeiten und geteilte Teams ansehen.', '<button class="btn btn-primary" onclick="window.createHubTeam()">+ Team anlegen</button>')}
+      ${teamFilterBar(all)}
       <section class="hub-section"><div class="hub-section-title"><div><h2>Meine Teams</h2><p>Bearbeiten, importieren oder mit anderen teilen</p></div><span>${mine.length}</span></div><div class="hub-team-grid own-teams">${mine.length ? mine.map(s => teamCard(s, pokemon.get(s.id) || [])).join('') : '<div class="hub-empty"><strong>Noch kein eigenes Team</strong><span>Lege dein erstes Team an oder importiere später einen Showdown-Export.</span><button class="btn btn-primary btn-sm" onclick="window.createHubTeam()">Team anlegen</button></div>'}</div><section id="hub-own-team-detail" class="hub-team-detail"></section></section>
       <section class="hub-section"><div class="hub-section-title"><div><h2>Geteilte Teams</h2><p>Öffentliche Teams anderer Trainer</p></div><span>${sharedFromOthers.length}</span></div><div class="hub-team-grid shared-teams">${sharedFromOthers.length ? sharedFromOthers.map(s => teamCard(s, pokemon.get(s.id) || [], names.get(s.profile_id), true)).join('') : '<div class="hub-empty">Noch keine geteilten Teams vorhanden.</div>'}</div><section id="hub-shared-team-detail" class="hub-team-detail"></section></section>
       ${failedTeamIds.size ? `<div class="hub-inline-warning">${failedTeamIds.size} Team${failedTeamIds.size === 1 ? '' : 's'} konnte${failedTeamIds.size === 1 ? '' : 'n'} nicht vollständig geladen werden.</div>` : ''}`;
@@ -163,6 +192,19 @@ export async function renderTeamsPage(root) {
     let activeSheet = null;
     let activeMons = [];
     let activeIsShared = false;
+
+    window.filterHubTeams = filter => {
+      document.querySelectorAll('.hub-team-filter button').forEach(button => {
+        const active = button.dataset.teamFilter === filter;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', String(active));
+      });
+      document.querySelectorAll('.hub-team-card').forEach(card => {
+        const visible = filter === 'all' || card.dataset.teamMode === filter;
+        card.hidden = !visible;
+        if (!visible && card.classList.contains('selected')) window.closeHubTeamDetail?.();
+      });
+    };
 
     window.createHubTeam = async () => {
       const title = prompt('Teamname', 'Mein Team');

@@ -11,6 +11,7 @@ const testFiles = [
   'security-hardening.test.mjs',
   'js/features/draft/draftLogic.test.mjs',
   'js/features/teams/teamStats.test.mjs',
+  'js/features/teams/championsImport.test.mjs',
   'js/features/teams/teamImportValidation.test.mjs',
   'js/features/teams/teamValidation.test.mjs',
 ];

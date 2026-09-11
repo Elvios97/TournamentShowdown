@@ -8,6 +8,7 @@ export function validateTeam(pokemonList = [], ruleset = null) {
   const issues = [];
   const expectedSize = Number(ruleset?.team_size) || 6;
   const isChampions = ruleset?.team_mode === 'champions';
+  const legalPokemonIds = ruleset?.legalPokemonIds instanceof Set ? ruleset.legalPokemonIds : null;
 
   if (!ruleset) issues.push(issue('warning', 'ruleset_missing', 'Für dieses Team ist kein Regelset ausgewählt.', 'Wähle oberhalb des Teams ein passendes Regelset aus.'));
   if (!pokemonList.length) issues.push(issue('error', 'team_empty', 'Das Team enthält noch keine Pokémon.', 'Füge mindestens ein Pokémon aus dem Katalog oder per Import hinzu.'));
@@ -41,6 +42,9 @@ export function validateTeam(pokemonList = [], ruleset = null) {
     if (new Set(normalizedMoves).size !== normalizedMoves.length) issues.push(issue('error', 'moves_duplicate', `${name}: Ein Move ist doppelt eingetragen.`, 'Ersetze einen der doppelten Moves.', mon.id));
 
     if (isChampions) {
+      if (legalPokemonIds?.size && !legalPokemonIds.has(mon.pokemon_id)) {
+        issues.push(issue('warning', 'champions_pokemon_illegal', `${name}: nicht in Pokemon Champions freigegeben.`, 'Waehle ein Champions-legales Pokemon oder stelle das Team auf Standard.', mon.id));
+      }
       const dvs = mon.dvs || {};
       let invalidDv = false;
       EV_KEYS.forEach(key => {

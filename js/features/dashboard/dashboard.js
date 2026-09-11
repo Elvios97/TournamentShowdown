@@ -374,11 +374,22 @@ function renderTeamSprites(pokemon) {
   return `<span class="team-sprite-rail" aria-label="Teamaufstellung">${slots.join('')}</span>`;
 }
 
+function sheetModeLabel(sheet) {
+  if ((sheet.team_mode || 'standard') === 'champions' || sheet.rules_profile === 'champions') return 'Champions';
+  if (sheet.rules_profile === 'current') return 'Aktuelle Generation';
+  return 'Open Sheet';
+}
+
+function sheetFormatLabel(sheet) {
+  return (sheet.battle_format || 'singles') === 'doubles' ? 'Doubles' : 'Singles';
+}
+
 function renderPersonalTeamCard(sheet, pokemon) {
   const pokemonCount = pokemon.length;
   const shared = sheet.visibility === 'public';
+  const meta = `${sheetModeLabel(sheet)} · ${sheetFormatLabel(sheet)} · ${pokemonCount} Pokémon`;
   return `<button class="dashboard-row team-row" onclick="window.openPersonalTeam('${sheet.id}')">
-    ${renderTeamBall(sheet.ball_variant)}<span class="row-copy"><strong>${esc(sheet.title || 'Team')}</strong><small>Open Sheet · ${pokemonCount} Pokémon</small></span>
+    ${renderTeamBall(sheet.ball_variant)}<span class="row-copy"><strong>${esc(sheet.title || 'Team')}</strong><small>${esc(meta)}</small></span>
     ${renderTeamSprites(pokemon)}<span class="badge ${shared ? 'badge-success' : ''}">${shared ? 'Geteilt' : 'Privat'}</span><span class="btn btn-secondary btn-sm">Ansehen</span><span class="row-chevron">›</span>
   </button>`;
 }

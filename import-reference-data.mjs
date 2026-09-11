@@ -27,16 +27,15 @@ const STAT_COLUMNS = {
 const BATTLE_ITEM_CATEGORIES = new Set([
   'held-items',
   'choice',
-  'effort-training',
   'bad-held-items',
   'type-enhancement',
   'species-specific',
   'plates',
-  'jewels',
   'mega-stones',
-  'memories',
   'z-crystals',
 ]);
+
+const NON_BATTLE_ITEM_PATTERN = /(catch|catching|bonus|standard-balls|special-balls|apricorn-balls|razz|nanab|pinap|tm|hm|tr|technical|machine|mail|letter|mulch|fossil|apricorn|shard|repel|escape|rope|rod|bike|bicycle|ticket|pass|key|card|parcel|souvenir|photo|flute|doll|honey|nectar|exp\.?\s*share|exp-share|experience|candy|rare-candy|incense|memory|memories|medicine|healing|revival|revive|beleber|potion|trank|restore|genesung|status-cures|full-heal|heiler|antidote|ether|elixir|pp-recovery|pp-up|pp-max|ap-plus|vitamin|vitamins|stat-boosts|x-attack|x-defense|x-speed|x-sp-atk|x-sp-def|x-accuracy|dire-hit|guard-spec)/i;
 
 function baseStatsFromPokemon(detail) {
   const stats = {};
@@ -62,16 +61,30 @@ function displayPokemonName(detail, speciesName = '') {
   return title(raw);
 }
 
+function localizedName(names = [], language = 'en') {
+  return names.find(entry => entry.language?.name === language)?.name || null;
+}
+
+function localizedNames(detail, fallbackId = '') {
+  const english = localizedName(detail.names, 'en') || title(fallbackId || detail.name || '');
+  const german = localizedName(detail.names, 'de') || null;
+  return { english, german, display: german || english };
+}
+
+function searchNames(...values) {
+  return [...new Set(values.flat().filter(Boolean).map(value => String(value).trim().toLowerCase()).filter(Boolean))];
+}
+
 function isBattleRelevantItem(detail) {
   const category = detail.category?.name || '';
+  const haystack = [detail.name, category, ...(detail.attributes || []).map(attribute => attribute.name || attribute.attribute?.name)].filter(Boolean).join(' ');
+  if (NON_BATTLE_ITEM_PATTERN.test(haystack)) return false;
+  if (String(detail.name || '').endsWith('-berry')) return true;
   if (BATTLE_ITEM_CATEGORIES.has(category)) return true;
   return Boolean(detail.attributes?.some(attribute => ['holdable', 'holdable-active'].includes(attribute.name || attribute.attribute?.name)));
 }
 
 function isChampionsLegalItem(detail) {
-  const category = detail.category?.name || '';
-  if (category === 'mega-stones') return true;
-  if (String(detail.name || '').endsWith('-berry')) return true;
   return isBattleRelevantItem(detail);
 }
 
@@ -144,9 +157,13 @@ async function importMoves() {
   const data = await requestJson(`${POKEAPI}/move?limit=100000`);
   const rows = await mapConcurrent(data.results, 14, async entry => {
     const detail = await requestJson(entry.url);
+    const names = localizedNames(detail, detail.name);
     return {
       id: detail.name,
-      display_name: title(detail.name),
+      display_name: names.display,
+      english_name: names.english,
+      german_name: names.german,
+      search_names: searchNames(detail.name, names.english, names.german, title(detail.name)),
       type: detail.type?.name || null,
       damage_class: detail.damage_class?.name || null,
       power: detail.power,
@@ -168,9 +185,13 @@ async function importAbilities() {
   const data = await requestJson(`${POKEAPI}/ability?limit=100000`);
   const rows = await mapConcurrent(data.results, 14, async entry => {
     const detail = await requestJson(entry.url);
+    const names = localizedNames(detail, detail.name);
     return {
       id: detail.name,
-      display_name: title(detail.name),
+      display_name: names.display,
+      english_name: names.english,
+      german_name: names.german,
+      search_names: searchNames(detail.name, names.english, names.german, title(detail.name)),
       generation: generationNumber(detail.generation?.name),
       effect_text: englishEffect(detail.effect_entries, 'effect'),
       short_effect: englishShortEffect(detail.effect_entries),
@@ -185,9 +206,13 @@ async function importItems() {
   const data = await requestJson(`${POKEAPI}/item?limit=100000`);
   const rows = await mapConcurrent(data.results, 12, async entry => {
     const detail = await requestJson(entry.url);
+    const names = localizedNames(detail, entry.name);
     return {
       id: entry.name,
-      display_name: title(entry.name),
+      display_name: names.display,
+      english_name: names.english,
+      german_name: names.german,
+      search_names: searchNames(entry.name, names.english, names.german, title(entry.name)),
       category: detail.category?.name || null,
       effect_text: englishEffect(detail.effect_entries, 'effect'),
       short_effect: englishShortEffect(detail.effect_entries),
@@ -224,10 +249,15 @@ async function importPokemon() {
       requestJson(entry.url),
       requestJson(`${POKEAPI}/pokemon/${dexNumber}`),
     ]);
+    const germanName = localizedName(speciesDetail.names, 'de');
+    const englishName = displayPokemonName(pokemonDetail, entry.name);
     return {
       dex_number: dexNumber,
       pokemon_id: entry.name,
-      pokemon_name: displayPokemonName(pokemonDetail, entry.name),
+      pokemon_name: englishName,
+      english_name: englishName,
+      german_name: germanName,
+      search_names: searchNames(entry.name, englishName, germanName),
       generation: generationNumber(speciesDetail.generation?.name),
       types: pokemonDetail.types.map(item => item.type.name),
       species_id: entry.name,
@@ -244,17 +274,30 @@ async function importPokemon() {
 async function importPokemonAbilities() {
   const data = await requestJson(`${POKEAPI}/pokemon?limit=2000`);
   const pokemon = data.results.filter(entry => Number.isInteger(idFromUrl(entry.url)));
+  const abilityNames = new Map();
   const rowsNested = await mapConcurrent(pokemon, 12, async entry => {
     const detail = await requestJson(entry.url);
-    return (detail.abilities || []).map(item => ({
-      pokemon_id: detail.name,
-      ability_id: item.ability?.name,
-      display_name: title(item.ability?.name || ''),
-      slot: item.slot || null,
-      is_hidden: Boolean(item.is_hidden),
-      source: 'pokeapi',
-      updated_at: new Date().toISOString(),
-    })).filter(row => row.ability_id);
+    return Promise.all((detail.abilities || []).map(async item => {
+      const abilityId = item.ability?.name;
+      if (!abilityId) return null;
+      if (!abilityNames.has(abilityId)) {
+        const abilityDetail = await requestJson(item.ability.url);
+        abilityNames.set(abilityId, localizedNames(abilityDetail, abilityId));
+      }
+      const names = abilityNames.get(abilityId);
+      return {
+        pokemon_id: detail.name,
+        ability_id: abilityId,
+        display_name: names.display,
+        english_name: names.english,
+        german_name: names.german,
+        search_names: searchNames(abilityId, names.english, names.german, title(abilityId)),
+        slot: item.slot || null,
+        is_hidden: Boolean(item.is_hidden),
+        source: 'pokeapi',
+        updated_at: new Date().toISOString(),
+      };
+    })).then(rows => rows.filter(Boolean));
   });
   await upsert('pokemon_ability_catalog', rowsNested.flat(), 'pokemon_id,ability_id');
 }
@@ -262,14 +305,27 @@ async function importPokemonAbilities() {
 async function importPokemonMoves() {
   const data = await requestJson(`${POKEAPI}/pokemon?limit=2000`);
   const pokemon = data.results.filter(entry => Number.isInteger(idFromUrl(entry.url)));
+  const moveNames = new Map();
   const rowsNested = await mapConcurrent(pokemon, 8, async entry => {
     const detail = await requestJson(entry.url);
-    return (detail.moves || []).flatMap(move => (move.version_group_details || []).map(version => {
+    const rows = [];
+    for (const move of detail.moves || []) {
+      const moveId = move.move?.name;
+      if (!moveId) continue;
+      if (!moveNames.has(moveId)) {
+        const moveDetail = await requestJson(move.move.url);
+        moveNames.set(moveId, localizedNames(moveDetail, moveId));
+      }
+      const names = moveNames.get(moveId);
+      for (const version of move.version_group_details || []) {
       const isCurrent = version.version_group?.name === CURRENT_VERSION_GROUP;
-      return {
+      rows.push({
         pokemon_id: detail.name,
-        move_id: move.move?.name,
-        display_name: title(move.move?.name || ''),
+        move_id: moveId,
+        display_name: names.display,
+        english_name: names.english,
+        german_name: names.german,
+        search_names: searchNames(moveId, names.english, names.german, title(moveId)),
         version_group: version.version_group?.name || null,
         learn_method: version.move_learn_method?.name || null,
         level_learned_at: version.level_learned_at || 0,
@@ -277,8 +333,10 @@ async function importPokemonMoves() {
         is_champions_legal: isCurrent,
         source: 'pokeapi',
         updated_at: new Date().toISOString(),
-      };
-    })).filter(row => row.move_id && row.version_group && row.learn_method);
+      });
+      }
+    }
+    return rows.filter(row => row.move_id && row.version_group && row.learn_method);
   });
   await upsert('pokemon_move_catalog', rowsNested.flat(), 'pokemon_id,move_id,version_group,learn_method');
 }
@@ -288,15 +346,21 @@ async function importPokemonForms() {
   const species = data.results.filter(entry => Number.isInteger(idFromUrl(entry.url)));
   const rowsNested = await mapConcurrent(species, 8, async entry => {
     const speciesDetail = await requestJson(entry.url);
+    const speciesGermanName = localizedName(speciesDetail.names, 'de');
     const generation = generationNumber(speciesDetail.generation?.name);
     if (!generation) return [];
     const varieties = speciesDetail.varieties || [];
     return Promise.all(varieties.map(async variety => {
       const detail = await requestJson(variety.pokemon.url);
+      const englishName = displayPokemonName(detail, entry.name);
+      const germanName = variety.is_default ? speciesGermanName : null;
       return {
         pokemon_id: detail.name,
         species_pokemon_id: entry.name,
-        pokemon_name: displayPokemonName(detail, entry.name),
+        pokemon_name: englishName,
+        english_name: englishName,
+        german_name: germanName,
+        search_names: searchNames(detail.name, englishName, germanName),
         form_name: variety.is_default ? 'Default' : title(detail.name.replace(`${entry.name}-`, '')),
         generation,
         types: detail.types.map(item => item.type.name),

@@ -72,6 +72,52 @@ export const SPRITE_ALIASES = {
   'basculegion-f': ['basculegion-f', 'basculegion-female', 'basculegion'],
   'charizard-mega-x': ['charizard-megax', 'charizard-mega-x', 'charizard'],
   'charizard-mega-y': ['charizard-megay', 'charizard-mega-y', 'charizard'],
+  'mewtwo-mega-x': ['mewtwo-megax', 'mewtwo-mega-x', 'mewtwo'],
+  'mewtwo-mega-y': ['mewtwo-megay', 'mewtwo-mega-y', 'mewtwo'],
+};
+
+const POKEPC_MEGA_SPRITE_IDS = {
+  'raichu-mega-x': '0026-mega-x',
+  'raichu-mega-y': '0026-mega-y',
+  'clefable-mega': '0036-mega',
+  'victreebel-mega': '0071-mega',
+  'starmie-mega': '0121-mega',
+  'dragonite-mega': '0149-mega',
+  'meganium-mega': '0154-mega',
+  'feraligatr-mega': '0160-mega',
+  'skarmory-mega': '0227-mega',
+  'chimecho-mega': '0358-mega',
+  'absol-mega-z': '0359-mega-z',
+  'staraptor-mega': '0398-mega',
+  'garchomp-mega-z': '0445-mega-z',
+  'lucario-mega-z': '0448-mega-z',
+  'froslass-mega': '0478-mega',
+  'heatran-mega': '0485-mega',
+  'darkrai-mega': '0491-mega',
+  'emboar-mega': '0500-mega',
+  'excadrill-mega': '0530-mega',
+  'scolipede-mega': '0545-mega',
+  'scrafty-mega': '0560-mega',
+  'eelektross-mega': '0604-mega',
+  'chandelure-mega': '0609-mega',
+  'golurk-mega': '0623-mega',
+  'chesnaught-mega': '0652-mega',
+  'delphox-mega': '0655-mega',
+  'greninja-mega': '0658-mega',
+  'pyroar-mega': '0668-mega',
+  'floette-mega': '0670-mega',
+  'malamar-mega': '0687-mega',
+  'barbaracle-mega': '0689-mega',
+  'dragalge-mega': '0691-mega',
+  'hawlucha-mega': '0701-mega',
+  'zygarde-mega': '0718-mega',
+  'crabominable-mega': '0740-mega',
+  'golisopod-mega': '0768-mega',
+  'drampa-mega': '0780-mega',
+  'magearna-mega': '0801-mega',
+  'zeraora-mega': '0807-mega',
+  'falinks-mega': '0870-mega',
+  'scovillain-mega': '0952-mega',
 };
 
 export function toPokemonId(name) {
@@ -86,10 +132,32 @@ export function toPokemonId(name) {
     .replace(/^-|-$/g, '');
 }
 
+function normalizeMegaSpriteId(id) {
+  const megaMatch = String(id || '').match(/^mega-(.+?)(?:-(x|y|z))?$/);
+  if (!megaMatch) return id;
+  return `${megaMatch[1]}-mega${megaMatch[2] ? `-${megaMatch[2]}` : ''}`;
+}
+
+function megaSpriteCandidates(id) {
+  const candidates = [
+    id,
+    id.endsWith('-mega-x') ? id.replace(/-mega-x$/, '-megax') : '',
+    id.endsWith('-mega-y') ? id.replace(/-mega-y$/, '-megay') : '',
+  ].filter(Boolean);
+  const baseId = id
+    .replace(/-mega-(x|y)$/, '')
+    .replace(/-mega$/, '');
+  if (baseId && baseId !== id) candidates.push(baseId);
+  return candidates;
+}
+
 export function getSpriteCandidates(name) {
-  const id = toPokemonId(name);
-  const ids = [...new Set(SPRITE_ALIASES[id] || [id])];
+  const id = normalizeMegaSpriteId(toPokemonId(name));
+  const ids = [...new Set(SPRITE_ALIASES[id] || megaSpriteCandidates(id))];
   const urls = [];
+  if (POKEPC_MEGA_SPRITE_IDS[id]) {
+    urls.push(`https://static.pokepc.net/images/pokemon/home3d-icon-xl/regular/${POKEPC_MEGA_SPRITE_IDS[id]}.webp?v=20260515`);
+  }
   ids.forEach(x => urls.push(`https://play.pokemonshowdown.com/sprites/dex/${x}.png`));
   ids.forEach(x => urls.push(`https://img.pokemondb.net/sprites/home/normal/${x}.png`));
   ids.forEach(x => urls.push(`https://play.pokemonshowdown.com/sprites/gen5/${x}.png`));

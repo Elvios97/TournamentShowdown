@@ -1,5 +1,5 @@
 import { getSupabase } from '../../supabaseClient.js';
-import { selectMany } from '../../storage/supabaseRepo.js';
+import { selectMany } from '../../storage/supabaseRepo.js?v=20260712a';
 
 export async function listReferenceCatalogs() {
   const [moves, items, abilities] = await Promise.all([

@@ -1,13 +1,13 @@
 import { getCurrentUserId } from '../../auth.js';
 import { esc, toast } from '../../utils.js';
-import { spriteAttrs } from '../../sprites.js?v=20260709s';
+import { spriteAttrs, toPokemonId } from '../../sprites.js?v=20260710e';
 import { listPokemonCatalog, listPokemonForms } from '../pools/pools.js';
-import { listPokemonAbilitiesForPokemon, listPokemonMovesForPokemon, listReferenceCatalogs } from '../catalogs/referenceCatalogs.js';
+import { listPokemonAbilitiesForPokemon, listPokemonMovesForPokemon, listReferenceCatalogs } from '../catalogs/referenceCatalogs.js?v=20260712a';
 import {
   getSheet, listPokemonForSheet, updateSheet, addPokemonSet, updatePokemonSet,
-  deletePokemonSet, updatePokemonSetOrder, exportSheetAsShowdown,
-} from '../teams/teamSheets.js?v=20260708a';
-import { validateTeam } from '../teams/teamValidation.js?v=20260705e';
+  deletePokemonSet, deleteSheet, updatePokemonSetOrder, importShowdownIntoSheet, exportSheetAsShowdown,
+} from '../teams/teamSheets.js?v=20260710e';
+import { validateTeam } from '../teams/teamValidation.js?v=20260713a';
 import {
   STAT_KEYS, calculatePokemonStats, getBaseStats, normalizeStatSpread,
   speedOrder, validateChampionsDvs,
@@ -115,8 +115,8 @@ const ABILITY_OVERRIDES = {
   'audino-mega': [{ pokemon_id: 'audino-mega', ability_id: 'healer', display_name: 'Healer', slot: 1, is_hidden: false }],
   'diancie-mega': [{ pokemon_id: 'diancie-mega', ability_id: 'magic-bounce', display_name: 'Magic Bounce', slot: 1, is_hidden: false }],
 };
-const NON_BATTLE_ITEM_PATTERN = /(tm|hm|tr|technical|machine|mail|letter|mulch|fossil|apricorn|shard|repel|escape|rope|rod|bike|bicycle|ticket|pass|key|card|parcel|souvenir|photo|flute|doll|honey|nectar|exp\.?\s*share|exp-share|experience|candy|rare-candy|incense)/i;
-const BATTLE_ITEM_CATEGORY_PATTERN = /(held|battle|berry|berries|mega|jewel|plate|memory|drive|z-crystal|choice|type-enhancement|species-specific|training)/i;
+const NON_BATTLE_ITEM_PATTERN = /(catch|catching|bonus|standard-balls|special-balls|apricorn-balls|razz|nanab|pinap|tm|hm|tr|technical|machine|mail|letter|mulch|fossil|apricorn|shard|repel|escape|rope|rod|bike|bicycle|ticket|pass|key|card|parcel|souvenir|photo|flute|doll|honey|nectar|exp\.?\s*share|exp-share|experience|candy|rare-candy|incense|memory|memories|medicine|healing|revival|revive|beleber|potion|trank|restore|genesung|status-cures|full-heal|heiler|antidote|ether|elixir|pp-recovery|pp-up|pp-max|ap-plus|vitamin|vitamins|stat-boosts|x-attack|x-defense|x-speed|x-sp-atk|x-sp-def|x-accuracy|dire-hit|guard-spec)/i;
+const BATTLE_ITEM_CATEGORY_PATTERN = /(held|battle|berry|berries|mega|plate|drive|z-crystal|choice|type-enhancement|species-specific)/i;
 const RULE_PROFILE_LABELS = {
   open: 'Open Sheet',
   current: 'Aktuelle Generation',
@@ -131,7 +131,7 @@ function selectOptions(entries = [], current = '', labeler = entry => entry.disp
   const options = ['<option value="">Keine Auswahl</option>'];
   entries.forEach(entry => {
     const value = entry[valueKey] || entry.display_name || '';
-    options.push(`<option value="${esc(value)}" ${value === current ? 'selected' : ''}${pickerOptionAttrs(entry)}>${esc(labeler(entry))}</option>`);
+    options.push(`<option value="${esc(value)}" ${value === current ? 'selected' : ''}${pickerOptionAttrs(entry, value)}>${esc(labeler(entry))}</option>`);
   });
   if (current && !entries.some(entry => (entry[valueKey] || entry.display_name) === current)) {
     options.push(`<option value="${esc(current)}" selected data-missing="true">${esc(current)} · nicht im Profil</option>`);
@@ -142,12 +142,12 @@ function selectOptions(entries = [], current = '', labeler = entry => entry.disp
 function groupItemOptions(items = [], current = '') {
   const groups = new Map();
   items.forEach(item => {
-    const category = item.category || 'sonstige';
+    const category = itemCategoryLabel(item);
     if (!groups.has(category)) groups.set(category, []);
     groups.get(category).push(item);
   });
   const body = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'de')).map(([category, entries]) => (
-    `<optgroup label="${esc(category)}">${entries.map(item => `<option value="${esc(item.display_name)}" ${item.display_name === current ? 'selected' : ''}${pickerOptionAttrs(item)}>${esc(item.display_name)}</option>`).join('')}</optgroup>`
+    `<optgroup label="${esc(category)}">${entries.map(item => `<option value="${esc(item.display_name)}" ${item.display_name === current ? 'selected' : ''}${pickerOptionAttrs(item, item.display_name)}>${esc(catalogDisplayName(item, item.display_name))}</option>`).join('')}</optgroup>`
   )).join('');
   const missing = current && !items.some(item => item.display_name === current) ? `<option value="${esc(current)}" selected>${esc(current)} · nicht im Profil</option>` : '';
   return `<option value="">Kein Item</option>${missing}${body}`;
@@ -162,7 +162,49 @@ function isCombatItem(item = {}) {
 
 function combatItems(items = []) {
   const filtered = items.filter(isCombatItem);
-  return filtered.length ? filtered : items.filter(item => !NON_BATTLE_ITEM_PATTERN.test([item.id, item.display_name, item.german_name, item.category].filter(Boolean).join(' ')));
+  const fallback = items.filter(item => !NON_BATTLE_ITEM_PATTERN.test([item.id, item.display_name, item.german_name, item.category].filter(Boolean).join(' ')));
+  return dedupeItemsByName(filtered.length ? filtered : fallback);
+}
+
+function itemDedupeKey(item = {}) {
+  return String(item.german_name || item.display_name || item.english_name || item.id || '').trim().toLowerCase();
+}
+
+function itemQualityScore(item = {}) {
+  let score = 0;
+  if (item.id && !String(item.id).startsWith('champions-')) score += 8;
+  if (item.category) score += 4;
+  if (item.german_name) score += 2;
+  if (item.short_effect || item.effect_text) score += 1;
+  return score;
+}
+
+function dedupeItemsByName(items = []) {
+  const deduped = new Map();
+  items.forEach(item => {
+    const key = itemDedupeKey(item);
+    if (!key) return;
+    const current = deduped.get(key);
+    if (!current || itemQualityScore(item) > itemQualityScore(current)) deduped.set(key, item);
+  });
+  return [...deduped.values()].sort((a, b) => catalogDisplayName(a).localeCompare(catalogDisplayName(b), 'de'));
+}
+
+function itemCategoryLabel(item = {}) {
+  const id = String(item.id || '').toLowerCase();
+  const raw = String(item.champions_category || item.category || '').toLowerCase();
+  const text = [id, raw, item.display_name, item.german_name, item.english_name].filter(Boolean).join(' ').toLowerCase();
+  if (id.endsWith('-berry') || raw.includes('berr')) return 'Beeren';
+  if (raw.includes('mega') || id.endsWith('ite')) return 'Mega-Steine';
+  if (raw.includes('z-crystal')) return 'Z-Kristalle';
+  if (raw.includes('plate')) return 'Tafeln';
+  if (raw.includes('choice') || text.includes('choice') || text.includes('wahl')) return 'Wahlitems';
+  if (raw.includes('type-enhancement')) return 'Typ-Boosts';
+  if (raw.includes('species-specific')) return 'Spezies-Items';
+  if (raw.includes('bad-held') || text.includes(' orb') || text.includes('-orb') || text.includes('heissorb') || text.includes('toxik-orb')) return 'Risiko-Items';
+  if (raw.includes('held') || raw.includes('battle')) return 'Kampfitems';
+  if (raw) return 'Weitere Kampfitems';
+  return 'Weitere Kampfitems';
 }
 
 function natureOptions(current = '') {
@@ -179,10 +221,48 @@ function natureOptions(current = '') {
   return options.join('');
 }
 
+function natureEffect(current = '') {
+  const normalized = String(current || '').trim().toLowerCase();
+  const match = NATURE_OPTIONS.find(([value, de]) => value.toLowerCase() === normalized || de.toLowerCase() === normalized);
+  return match ? { up: match[2], down: match[3] } : { up: null, down: null };
+}
+
 function pokemonDisplayName(entry = null, fallback = '') {
   const en = entry?.pokemon_name || fallback || '';
   const de = entry?.german_name || '';
   return de && de !== en ? `${de} (${en})` : en;
+}
+
+function catalogDisplayName(entry = null, fallback = '') {
+  return entry?.german_name || entry?.display_name || entry?.english_name || entry?.pokemon_name || fallback || '';
+}
+
+function catalogEnglishName(entry = null) {
+  return entry?.english_name || (entry?.german_name && entry?.display_name !== entry.german_name ? entry?.display_name : '') || '';
+}
+
+function catalogAliasText(entry = null) {
+  const display = catalogDisplayName(entry);
+  const english = catalogEnglishName(entry);
+  return english && english !== display ? english : '';
+}
+
+function searchTextForEntry(entry = null, fallback = '') {
+  return [
+    fallback,
+    entry?.id,
+    entry?.move_id,
+    entry?.ability_id,
+    entry?.display_name,
+    entry?.english_name,
+    entry?.german_name,
+    entry?.pokemon_name,
+    ...(entry?.search_names || []),
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function catalogEntryMatchesValue(entry, value) {
+  return Boolean(value) && [entry?.display_name, entry?.german_name, entry?.english_name, entry?.id, entry?.move_id, entry?.ability_id].filter(Boolean).includes(value);
 }
 
 function makeCatalogMap(catalog, forms) {
@@ -190,6 +270,15 @@ function makeCatalogMap(catalog, forms) {
   catalog.forEach(mon => map.set(mon.pokemon_id, mon));
   forms.forEach(form => map.set(form.pokemon_id, form));
   return map;
+}
+
+function importedMegaBaseEntry(mon, catalogMap) {
+  const candidates = [];
+  const id = String(mon?.pokemon_id || '');
+  const name = String(mon?.pokemon_name || '');
+  if (id.startsWith('mega-')) candidates.push(id.replace(/^mega-/, ''));
+  if (/^Mega\s+/i.test(name)) candidates.push(toPokemonId(name.replace(/^Mega\s+/i, '')));
+  return candidates.map(candidate => catalogMap.get(candidate)).find(Boolean) || null;
 }
 
 function selectedFormFor(mon, formsBySpecies) {
@@ -251,6 +340,41 @@ function findMegaStone(form, items = []) {
   }) || null;
 }
 
+function compactKey(value = '') {
+  return toPokemonId(value).replace(/-/g, '');
+}
+
+function megaFormForItem(mon, formsBySpecies, items = []) {
+  const itemKey = compactKey(mon?.item || '');
+  if (!itemKey) return null;
+  return (formsBySpecies.get(mon?.pokemon_id) || []).find(form => {
+    if (!form.is_mega) return false;
+    return megaStoneCandidates(form).some(candidate => compactKey(candidate) === itemKey);
+  }) || null;
+}
+
+function effectiveFormFor(mon, formsBySpecies, items = []) {
+  const explicit = selectedFormFor(mon, formsBySpecies);
+  if (explicit) return explicit;
+  return megaFormForItem(mon, formsBySpecies, items);
+}
+
+function statsEntryFor(preferredEntry, fallbackEntry) {
+  return getBaseStats(preferredEntry) ? preferredEntry : fallbackEntry;
+}
+
+function effectiveTeamEntry(mon, catalogMap, formsBySpecies, items = []) {
+  const baseEntry = catalogMap.get(mon?.pokemon_id);
+  const explicitEntry = catalogMap.get(mon?.form_pokemon_id);
+  const inferredForm = effectiveFormFor(mon, formsBySpecies, items);
+  return statsEntryFor(inferredForm || explicitEntry || baseEntry, baseEntry);
+}
+
+function effectiveTeamMon(mon, catalogMap, formsBySpecies, items = []) {
+  const entry = effectiveTeamEntry(mon, catalogMap, formsBySpecies, items);
+  return entry?.pokemon_id ? { ...mon, form_pokemon_id: entry.pokemon_id } : mon;
+}
+
 function defaultAbilityFor(mon, pokemonAbilities) {
   const formId = mon?.form_pokemon_id || mon?.pokemon_id;
   const direct = [...pokemonAbilities.filter(entry => entry.pokemon_id === formId), ...(ABILITY_OVERRIDES[formId] || [])];
@@ -264,9 +388,104 @@ function typeChips(entry = null) {
   return `<div class="builder-type-row">${types.map(type => `<span class="type-chip type-${esc(type)}">${esc(TYPE_LABELS[type] || type)}</span>`).join('')}</div>`;
 }
 
-function statsMarkup(stats, missingText = 'Stats fehlen im Katalog') {
+function statsMarkup(stats, missingText = 'Stats fehlen im Katalog', nature = '') {
   if (!stats) return `<div class="builder-stats-missing">${esc(missingText)}</div>`;
-  return `<div class="builder-stat-grid">${STAT_KEYS.map(key => `<div class="builder-stat"><span>${STAT_LABELS[key]}</span><strong>${stats[key]}</strong></div>`).join('')}</div>`;
+  const { up, down } = natureEffect(nature);
+  return `<div class="builder-stat-grid">${STAT_KEYS.map(key => {
+    const tone = key === up ? ' boosted' : key === down ? ' reduced' : '';
+    return `<div class="builder-stat${tone}"><span>${STAT_LABELS[key]}</span><strong>${stats[key]}</strong></div>`;
+  }).join('')}</div>`;
+}
+
+function statToneClass(key) {
+  return String(key || '').toLowerCase();
+}
+
+function baseStatsFor(entry = null) {
+  return getBaseStats(entry);
+}
+
+function bstFor(entry = null) {
+  const stats = baseStatsFor(entry);
+  return stats ? STAT_KEYS.reduce((sum, key) => sum + stats[key], 0) : null;
+}
+
+function hasMegaForm(mon, formsBySpecies) {
+  return (formsBySpecies.get(mon?.pokemon_id) || []).some(form => form.is_mega);
+}
+
+function addCatalogSortLabel(sortKey) {
+  return {
+    name: 'Name',
+    bst: 'BST',
+    HP: 'KP',
+    Atk: 'Angriff',
+    Def: 'Verteidigung',
+    SpA: 'Sp. Angriff',
+    SpD: 'Sp. Verteidigung',
+    Spe: 'Initiative',
+  }[sortKey] || 'Name';
+}
+
+function addCatalogCandidates(catalog, pokemon, mode, formsBySpecies, filters = {}) {
+  const existing = new Set(pokemon.map(mon => mon.pokemon_id));
+  const search = String(filters.search || '').trim().toLowerCase();
+  const type = filters.type || 'all';
+  const mega = filters.mega || 'all';
+  const sort = filters.sort || 'name';
+  const candidates = filterCatalogForMode(catalog, mode).filter(mon => {
+    if (existing.has(mon.pokemon_id)) return false;
+    const types = Array.isArray(mon.types) ? mon.types : [];
+    const megaAvailable = hasMegaForm(mon, formsBySpecies);
+    const haystack = [mon.pokemon_name, mon.german_name, ...types.map(item => TYPE_LABELS[item] || item)].filter(Boolean).join(' ').toLowerCase();
+    if (search && !haystack.includes(search)) return false;
+    if (type !== 'all' && !types.includes(type)) return false;
+    if (mega === 'with' && !megaAvailable) return false;
+    if (mega === 'without' && megaAvailable) return false;
+    return true;
+  });
+
+  return candidates.sort((a, b) => {
+    if (sort === 'name') return pokemonDisplayName(a, a.pokemon_name).localeCompare(pokemonDisplayName(b, b.pokemon_name), 'de');
+    if (sort === 'bst') return (bstFor(b) ?? -1) - (bstFor(a) ?? -1) || pokemonDisplayName(a, a.pokemon_name).localeCompare(pokemonDisplayName(b, b.pokemon_name), 'de');
+    if (STAT_KEYS.includes(sort)) {
+      const aStats = baseStatsFor(a);
+      const bStats = baseStatsFor(b);
+      return (bStats?.[sort] ?? -1) - (aStats?.[sort] ?? -1) || (bstFor(b) ?? -1) - (bstFor(a) ?? -1);
+    }
+    return 0;
+  });
+}
+
+function isChampionsLegalEntry(entry = null) {
+  return entry?.is_champions_legal === true;
+}
+
+function addPokemonResultMarkup(mon, formsBySpecies) {
+  const displayName = pokemonDisplayName(mon, mon.pokemon_name);
+  const stats = baseStatsFor(mon);
+  const bst = bstFor(mon);
+  const megaAvailable = hasMegaForm(mon, formsBySpecies);
+  return `<button type="button" class="builder-add-result" data-pokemon-id="${esc(mon.pokemon_id)}" onclick="window.builderAddPokemonFromCatalog(this.dataset.pokemonId)">
+    <img ${spriteAttrs(mon.pokemon_name)} alt="${esc(displayName)}">
+    <div class="builder-add-result-main">
+      <strong>${esc(displayName)}</strong>
+      ${typeChips(mon)}
+      <small>${megaAvailable ? 'Mega verfuegbar' : 'Keine Mega-Form'}</small>
+    </div>
+    <div class="builder-add-statline">
+      ${STAT_KEYS.map(key => `<span><b>${STAT_LABELS[key]}</b><em>${stats?.[key] ?? '-'}</em></span>`).join('')}
+      <span class="builder-add-bst"><b>BST</b><em>${bst ?? '-'}</em></span>
+    </div>
+  </button>`;
+}
+
+function addPokemonResultsMarkup(candidates, formsBySpecies) {
+  return candidates.map(mon => addPokemonResultMarkup(mon, formsBySpecies)).join('') || '<div class="builder-empty-inline">Keine Treffer. Filter oder Suche anpassen.</div>';
+}
+
+function addPokemonResultsClass(count = 0) {
+  return `builder-add-results${count <= 6 ? ' compact' : ''}`;
 }
 
 function spreadInputs(prefix, spread, max, cssClass) {
@@ -285,15 +504,27 @@ function renderSlots(pokemon, selectedId, editable) {
 }
 
 function miniStatBars(mon, entry, sheet) {
-  const stats = calculatePokemonStats(mon, entry, { mode: sheet.team_mode || 'standard' });
-  if (!stats) return '';
+  const mode = sheet.team_mode || 'standard';
+  const calculated = calculatePokemonStats(mon, entry, { mode });
+  if (!calculated) return '';
+  const benchmark = calculatePokemonStats({
+    ...mon,
+    nature: '',
+    evs: {},
+    ivs: {},
+    dvs: {},
+  }, entry, { mode });
   return `<div class="builder-slot-bars">${STAT_KEYS.map(key => {
-    const width = Math.max(8, Math.min(100, Math.round((stats[key] / 220) * 100)));
-    return `<span><b>${STAT_LABELS[key]}</b><i style="width:${width}%"></i><em>${stats[key]}</em></span>`;
+    const delta = benchmark ? calculated[key] - benchmark[key] : 0;
+    const width = Math.max(8, Math.min(100, Math.round((calculated[key] / 220) * 100)));
+    const deltaLabel = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '±0';
+    const deltaClass = delta > 0 ? ' up' : delta < 0 ? ' down' : '';
+    const title = `${STAT_LABELS[key]} aktuell ${calculated[key]} · Verteilung/Wesen ${deltaLabel}`;
+    return `<span class="stat-${statToneClass(key)}" title="${esc(title)}"><b>${STAT_LABELS[key]}</b><i style="width:${width}%"></i><em>${calculated[key]}</em><small class="${deltaClass}">${deltaLabel}</small></span>`;
   }).join('')}</div>`;
 }
 
-function renderTeamStrip(pokemon, selectedId, editable, catalogMap, sheet) {
+function renderTeamStrip(pokemon, selectedId, editable, catalogMap, sheet, formsBySpecies, items = []) {
   const slots = [];
   for (let index = 0; index < 6; index++) {
     const mon = pokemon[index];
@@ -303,14 +534,15 @@ function renderTeamStrip(pokemon, selectedId, editable, catalogMap, sheet) {
       </button>`);
       continue;
     }
-    const entry = catalogMap.get(mon.form_pokemon_id) || catalogMap.get(mon.pokemon_id);
+    const entry = effectiveTeamEntry(mon, catalogMap, formsBySpecies, items);
+    const baseEntry = catalogMap.get(mon.pokemon_id);
     const spriteName = entry?.pokemon_name || mon.pokemon_name;
     const displayName = pokemonDisplayName(entry, mon.pokemon_name);
     slots.push(`<button class="builder-slot ${mon.id === selectedId ? 'active' : ''}" onclick="window.builderSelectPokemon('${mon.id}')">
       <span class="builder-slot-index">${index + 1}</span>
       <img ${spriteAttrs(spriteName)} alt="${esc(displayName)}">
       <span class="builder-slot-copy"><strong>${esc(displayName)}</strong>${typeChips(entry)}<small>${esc(mon.item || 'Kein Item')}${mon.ability ? ` · ${esc(mon.ability)}` : ''}</small></span>
-      ${miniStatBars(mon, entry, sheet)}
+      ${miniStatBars(effectiveTeamMon(mon, catalogMap, formsBySpecies, items), entry, sheet)}
     </button>`);
   }
   return `<section class="builder-team-strip"><div class="builder-panel-title"><span>Team</span><strong>${pokemon.length}/6</strong></div><div class="builder-slots">${slots.join('')}</div></section>`;
@@ -318,13 +550,21 @@ function renderTeamStrip(pokemon, selectedId, editable, catalogMap, sheet) {
 
 function filterCatalogForMode(catalog, mode) {
   if (mode !== 'champions') return catalog;
-  return catalog.filter(mon => mon.is_champions_legal !== false);
+  return catalog.filter(isChampionsLegalEntry);
+}
+
+function championsLegalityMessage(mon, catalogMap) {
+  const entry = catalogMap.get(mon?.pokemon_id);
+  const name = pokemonDisplayName(entry, mon?.pokemon_name || 'Pokemon');
+  if (!entry) return `${name} ist nicht im Katalog gefunden und kann nicht als Champions-legal geprueft werden.`;
+  if (!isChampionsLegalEntry(entry)) return `${name} ist nicht in Pokemon Champions freigegeben.`;
+  return '';
 }
 
 function filterReferencesForMode(references, mode) {
   const items = combatItems(references.items || []);
   if (mode === 'champions') {
-    const championsItems = items.filter(item => item.is_champions_legal === true);
+    const championsItems = items.filter(item => item.is_champions_legal === true || item.is_battle_relevant === true);
     return { ...references, items: championsItems.length ? championsItems : items };
   }
   if (mode === 'current') {
@@ -344,22 +584,61 @@ function filterMovesForProfile(moves, profile) {
   return moves;
 }
 
+function moveLookupKeys(move = {}) {
+  return [
+    move.id,
+    move.move_id,
+    move.display_name,
+    move.english_name,
+    move.german_name,
+    ...(move.search_names || []),
+  ].filter(Boolean).flatMap(value => {
+    const raw = String(value).trim();
+    return [raw, raw.toLowerCase(), toPokemonId(raw), compactKey(raw)];
+  });
+}
+
+function buildMoveMetaMap(moveCatalog = []) {
+  const map = new Map();
+  moveCatalog.forEach(move => {
+    moveLookupKeys(move).forEach(key => {
+      if (key && !map.has(key)) map.set(key, move);
+    });
+  });
+  return map;
+}
+
+function findMoveMeta(value, metaByKey) {
+  if (!value) return null;
+  return metaByKey.get(value)
+    || metaByKey.get(String(value).toLowerCase())
+    || metaByKey.get(toPokemonId(value))
+    || metaByKey.get(compactKey(value))
+    || null;
+}
+
 function moveOptionsFor(mon, pokemonMoves, moveCatalog, profile) {
   const formId = mon.form_pokemon_id || mon.pokemon_id;
   const direct = pokemonMoves.filter(entry => entry.pokemon_id === formId);
   const species = pokemonMoves.filter(entry => entry.pokemon_id === mon.pokemon_id);
   const sourceMoves = formId !== mon.pokemon_id ? [...species, ...direct] : (direct.length ? direct : species);
   const scoped = filterMovesForProfile(sourceMoves, profile);
-  const metaById = new Map();
-  moveCatalog.forEach(move => {
-    if (move.id) metaById.set(move.id, move);
-    if (move.display_name) metaById.set(move.display_name, move);
-  });
+  const metaByKey = buildMoveMetaMap(moveCatalog);
   const base = scoped.length
-    ? scoped.map(move => ({ ...(metaById.get(move.move_id) || metaById.get(move.display_name) || {}), ...move }))
+    ? scoped.map(move => {
+      const meta = findMoveMeta(move.move_id, metaByKey) || findMoveMeta(move.display_name, metaByKey) || {};
+      return {
+        ...meta,
+        ...move,
+        display_name: move.german_name || meta.german_name || move.display_name || meta.display_name,
+        english_name: move.english_name || meta.english_name || meta.display_name,
+        german_name: move.german_name || meta.german_name,
+        search_names: [...(meta.search_names || []), ...(move.search_names || [])],
+      };
+    })
     : moveCatalog;
   const deduped = new Map();
-  base.forEach(move => {
+  [...base, ...(mon.moves || []).map(moveName => ({ ...(findMoveMeta(moveName, metaByKey) || {}), display_name: moveName, move_id: findMoveMeta(moveName, metaByKey)?.id || moveName }))].forEach(move => {
     const key = move.display_name || move.move_id || move.id;
     if (key && !deduped.has(key)) deduped.set(key, move);
   });
@@ -367,7 +646,9 @@ function moveOptionsFor(mon, pokemonMoves, moveCatalog, profile) {
 }
 
 function moveOptionLabel(move) {
-  const parts = [move.display_name];
+  const parts = [catalogDisplayName(move, move.display_name)];
+  const alias = catalogAliasText(move);
+  if (alias) parts.push(alias);
   if (move.type) parts.push(TYPE_LABELS[move.type] || move.type);
   if (move.power != null) parts.push(`${move.power} BP`);
   return parts.filter(Boolean).join(' · ');
@@ -382,8 +663,14 @@ function pickerInfoAttr(entry) {
   return text ? ` data-info="${esc(text)}"` : '';
 }
 
-function pickerOptionAttrs(entry) {
-  const attrs = [pickerInfoAttr(entry)];
+function pickerOptionAttrs(entry, fallback = '') {
+  const attrs = [
+    pickerInfoAttr(entry),
+    ` data-search="${esc(searchTextForEntry(entry, fallback))}"`,
+    ` data-display="${esc(catalogDisplayName(entry, fallback))}"`,
+  ];
+  const alias = catalogAliasText(entry);
+  if (alias) attrs.push(` data-alias="${esc(alias)}"`);
   if (entry?.type) attrs.push(` data-move-type="${esc(entry.type)}"`);
   if (entry?.damage_class) attrs.push(` data-move-class="${esc(entry.damage_class)}"`);
   if (entry?.power != null) attrs.push(` data-move-power="${esc(entry.power)}"`);
@@ -393,9 +680,61 @@ function pickerOptionAttrs(entry) {
 }
 
 function selectedInfo(entries, value, id, fallback = '') {
-  const entry = value ? entries.find(item => item.display_name === value || item.id === value || item.move_id === value) : null;
+  const entry = value ? entries.find(item => catalogEntryMatchesValue(item, value)) : null;
   const text = pickerInfoText(entry, fallback);
   return `<small class="builder-picker-help" id="${id}">${esc(text)}</small>`;
+}
+
+function choiceTitle(option) {
+  return option?.dataset?.display || option?.value || option?.textContent?.trim() || '';
+}
+
+function choiceSummaryFromOption(option, kind = 'item', context = 'card') {
+  if (!option?.value) {
+    return kind === 'move'
+      ? '<strong>Move auswaehlen</strong><small>Noch kein Move gesetzt</small>'
+      : '<strong>Item auswaehlen</strong><small>Kein Item gesetzt</small>';
+  }
+  const title = choiceTitle(option);
+  if (kind === 'move') {
+    const type = option.dataset.moveType || '';
+    const moveClass = option.dataset.moveClass || '';
+    const power = option.dataset.movePower || '-';
+    const accuracy = option.dataset.moveAccuracy || '-';
+    const typeLabel = type ? (TYPE_LABELS[type] || type) : 'Typ offen';
+    const alias = option.dataset.alias || '';
+    if (context === 'card') {
+      return `<strong>${esc(title)}</strong><small>${alias ? esc(alias) : 'Move gesetzt'}</small>`;
+    }
+    return `<strong>${esc(title)}</strong><small>${alias ? `${esc(alias)} &middot; ` : ''}<span class="type-chip ${type ? `type-${esc(type)}` : ''}">${esc(typeLabel)}</span>${moveClass ? ` ${esc(moveClass)}` : ''} &middot; BP ${esc(power)} &middot; Acc ${esc(accuracy)}</small>`;
+  }
+  const group = option.parentElement?.label || 'Item';
+  const text = option.dataset.info || 'Keine Beschreibung hinterlegt.';
+  const alias = option.dataset.alias || '';
+  return `<strong>${esc(title)}</strong><small>${alias ? `${esc(alias)} &middot; ` : ''}${esc(group)}${context === 'card' ? '' : ` &middot; ${esc(text)}`}</small>`;
+}
+
+function selectedChoiceCard(entries, value, fieldId, kind = 'item', editable = true) {
+  const entry = value ? entries.find(item => catalogEntryMatchesValue(item, value)) : null;
+  const selected = entry
+    ? {
+      value: catalogDisplayName(entry, entry.display_name || entry.move_id || entry.id),
+      dataset: {
+        moveType: entry.type || '',
+        moveClass: entry.damage_class || '',
+        movePower: entry.power ?? '',
+        moveAccuracy: entry.accuracy ?? '',
+        info: pickerInfoText(entry),
+        alias: catalogAliasText(entry),
+        display: catalogDisplayName(entry, entry.display_name || entry.move_id || entry.id),
+      },
+      parentElement: { label: kind === 'move' ? 'Move' : itemCategoryLabel(entry) },
+    }
+    : value ? { value, dataset: { info: 'Nicht im aktuellen Profil vorhanden.' }, parentElement: { label: 'Extern' } } : null;
+  const label = kind === 'move' ? 'Move auswaehlen' : 'Item auswaehlen';
+  return `<button type="button" class="builder-choice-card ${kind === 'move' ? 'builder-move-choice-card' : ''}" data-choice-card-for="${esc(fieldId)}" onclick="window.openBuilderChoicePicker('${esc(fieldId)}','${esc(kind)}')" ${editable ? '' : 'disabled'} aria-label="${esc(label)}">
+    ${choiceSummaryFromOption(selected, kind, 'card')}
+  </button>`;
 }
 
 function moveDetailMarkupFromOption(option) {
@@ -418,10 +757,10 @@ function moveDetailMarkupFromOption(option) {
 }
 
 function selectedMoveDetail(entries, value, id) {
-  const entry = value ? entries.find(item => item.display_name === value || item.id === value || item.move_id === value) : null;
+  const entry = value ? entries.find(item => catalogEntryMatchesValue(item, value)) : null;
   const selected = entry
     ? {
-      value: entry.display_name || entry.move_id || entry.id,
+      value: catalogDisplayName(entry, entry.display_name || entry.move_id || entry.id),
       dataset: {
         moveType: entry.type || '',
         moveClass: entry.damage_class || '',
@@ -429,6 +768,8 @@ function selectedMoveDetail(entries, value, id) {
         moveAccuracy: entry.accuracy ?? '',
         movePp: entry.pp ?? '',
         info: pickerInfoText(entry),
+        alias: catalogAliasText(entry),
+        display: catalogDisplayName(entry, entry.display_name || entry.move_id || entry.id),
       },
     }
     : value ? { value, dataset: { missing: 'true', info: 'Dieser Move ist im aktuellen Profil nicht vorhanden.' } } : null;
@@ -451,9 +792,17 @@ function updateMoveDetail(select) {
   panel.innerHTML = moveDetailMarkupFromOption(select.selectedOptions?.[0]);
 }
 
-function renderAddPokemon(catalog, pokemon, mode) {
-  const existing = new Set(pokemon.map(mon => mon.pokemon_id));
-  const available = filterCatalogForMode(catalog, mode).filter(mon => !existing.has(mon.pokemon_id));
+function updateChoiceCard(select) {
+  if (!select?.id) return;
+  const card = document.querySelector(`[data-choice-card-for="${select.id}"]`);
+  if (!card) return;
+  const kind = select.dataset.choiceKind || (select.id.includes('move') ? 'move' : 'item');
+  card.innerHTML = choiceSummaryFromOption(select.selectedOptions?.[0], kind, 'card');
+}
+
+function renderAddPokemon(catalog, pokemon, mode, formsBySpecies) {
+  return renderAddPokemonCatalog(catalog, pokemon, mode, formsBySpecies);
+  const available = addCatalogCandidates(catalog, pokemon, mode, formsBySpecies);
   return `<section class="builder-card builder-add-card">
     <div><span class="eyebrow">Katalog</span><h2>Pokémon hinzufügen</h2><p>${mode === 'champions' ? 'Es werden nur Champions-legale Pokémon angeboten.' : 'Wähle ein Pokémon aus dem bestehenden Katalog. Formen und Megas stellst du danach im Set ein.'}</p></div>
     <div class="builder-add-row">
@@ -462,6 +811,51 @@ function renderAddPokemon(catalog, pokemon, mode) {
       <button class="btn btn-primary" onclick="window.builderAddPokemon()" ${available.length ? '' : 'disabled'}>Hinzufügen</button>
     </div>
     <small id="builder-add-count">${available.length} verfügbar</small>
+  </section>`;
+}
+
+function renderAddPokemonCatalog(catalog, pokemon, mode, formsBySpecies) {
+  const available = addCatalogCandidates(catalog, pokemon, mode, formsBySpecies);
+  return `<section class="builder-card builder-add-card">
+    <div class="builder-add-head">
+      <div><span class="eyebrow">Katalog</span><h2>Pokemon hinzufuegen</h2><p>${mode === 'champions' ? 'Es werden nur Champions-legale Pokemon angeboten.' : 'Formen und Megas stellst du danach im Set ein.'}</p></div>
+      <small id="builder-add-count">${available.length} verfuegbar</small>
+    </div>
+    <div class="builder-add-toolbar">
+      <input class="form-input" id="builder-add-search" type="search" placeholder="Name oder Typ suchen..." oninput="window.builderFilterCatalog()">
+      <select class="form-select" id="builder-add-sort" onchange="window.builderFilterCatalog()" aria-label="Sortierung">
+        <option value="name">${esc(addCatalogSortLabel('name'))}</option>
+        <option value="bst">${esc(addCatalogSortLabel('bst'))}</option>
+        ${STAT_KEYS.map(key => `<option value="${esc(key)}">${esc(addCatalogSortLabel(key))}</option>`).join('')}
+      </select>
+      <input type="hidden" id="builder-add-type" value="all">
+      <input type="hidden" id="builder-add-mega" value="all">
+    </div>
+    <div class="builder-add-filter-row" aria-label="Typfilter">
+      <button type="button" class="active" data-builder-type="all" onclick="window.builderSetAddType(this.dataset.builderType)">Alle Typen</button>
+      ${TYPE_ORDER.map(type => `<button type="button" class="builder-type-filter type-${esc(type)}" data-builder-type="${esc(type)}" onclick="window.builderSetAddType(this.dataset.builderType)">${esc(TYPE_LABELS[type] || type)}</button>`).join('')}
+    </div>
+    <div class="builder-add-filter-row compact" aria-label="Mega-Filter">
+      <button type="button" class="active" data-builder-mega="all" onclick="window.builderSetAddMega(this.dataset.builderMega)">Alle</button>
+      <button type="button" data-builder-mega="with" onclick="window.builderSetAddMega(this.dataset.builderMega)">Mit Mega</button>
+      <button type="button" data-builder-mega="without" onclick="window.builderSetAddMega(this.dataset.builderMega)">Ohne Mega</button>
+    </div>
+    <div class="${addPokemonResultsClass(available.length)}" id="builder-add-results">${addPokemonResultsMarkup(available, formsBySpecies)}</div>
+  </section>`;
+}
+
+function renderBuilderShowdownImport(editable) {
+  if (!editable) return '';
+  return `<section class="builder-card builder-import-card">
+    <div class="builder-import-head">
+      <div><span class="eyebrow">Import</span><h2>Showdown einfuegen</h2><p>Ersetzt das aktuelle Team durch den eingefuegten Showdown-Export.</p></div>
+      <button class="btn btn-ghost btn-sm" onclick="window.builderToggleShowdownImport()">Schliessen</button>
+    </div>
+    <textarea class="form-textarea builder-import-textarea" id="builder-showdown-import" placeholder="Pokemon @ Item&#10;Ability: ...&#10;EVs: ...&#10;- Move"></textarea>
+    <div class="builder-import-actions">
+      <span id="builder-import-status"></span>
+      <button class="btn btn-primary btn-sm" onclick="window.builderImportShowdown()">Team uebernehmen</button>
+    </div>
   </section>`;
 }
 
@@ -478,49 +872,52 @@ function abilityOptionsFor(mon, pokemonAbilities, fallbackAbilities) {
   return [...deduped.values()].sort((a, b) => (Number(a.slot) || 99) - (Number(b.slot) || 99) || String(a.display_name).localeCompare(String(b.display_name), 'de'));
 }
 
-function renderEditor(sheet, mon, catalogEntry, baseCatalogEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable) {
+function renderEditor(sheet, mon, catalogEntry, baseCatalogEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable, catalogMap = new Map()) {
   if (!mon) return '<section class="builder-card builder-empty"><strong>Kein Pokémon ausgewählt.</strong><span>Wähle links einen Slot aus oder füge ein Pokémon hinzu.</span></section>';
   const mode = sheet.team_mode || 'standard';
   const isChampions = mode === 'champions';
   const profile = ruleProfileForSheet(sheet);
   const moves = [...(mon.moves || [])];
   while (moves.length < 4) moves.push('');
-  const stats = calculatePokemonStats(mon, catalogEntry, { mode });
   const filteredReferences = filterReferencesForMode(references, profile);
-  const selectedForm = selectedFormFor(mon, formsBySpecies);
-  const displayEntry = catalogEntry || selectedForm;
+  const selectedForm = effectiveFormFor(mon, formsBySpecies, filteredReferences.items || []);
+  const effectiveMon = selectedForm ? { ...mon, form_pokemon_id: selectedForm.pokemon_id } : mon;
+  const displayEntry = selectedForm || catalogEntry;
+  const baseStatsEntry = statsEntryFor(displayEntry, baseCatalogEntry || catalogEntry);
+  const stats = calculatePokemonStats(effectiveMon, baseStatsEntry, { mode });
   const spriteName = selectedForm?.pokemon_name || mon.pokemon_name;
   const displayName = pokemonDisplayName(displayEntry, mon.pokemon_name);
   const megaStone = findMegaStone(selectedForm, filteredReferences.items || []);
-  const abilityOptions = abilityOptionsFor(mon, pokemonAbilities, references.abilities || []);
-  const moveOptions = moveOptionsFor(mon, pokemonMoves, references.moves || [], profile);
+  const abilityOptions = abilityOptionsFor(effectiveMon, pokemonAbilities, references.abilities || []);
+  const moveOptions = moveOptionsFor(effectiveMon, pokemonMoves, references.moves || [], profile);
   const evs = normalizeStatSpread(mon.evs, 252, 0);
   const ivs = normalizeStatSpread(mon.ivs, 31, 31);
   const dvs = normalizeStatSpread(mon.dvs, 32, 0);
+  const championsWarning = isChampions ? championsLegalityMessage(mon, catalogMap) : '';
   return `<section class="builder-card builder-editor-card">
     <div class="builder-editor-head">
-      <div class="builder-editor-identity"><img ${spriteAttrs(spriteName)} alt="${esc(displayName)}"><div><span>${isChampions ? 'Champions-Set' : 'Standard-Set'}</span><h2>${esc(displayName)}</h2>${spriteName !== mon.pokemon_name ? `<small>${esc(mon.pokemon_name)}</small>` : ''}${typeChips(displayEntry)}</div></div>
+      <div class="builder-editor-identity"><img ${spriteAttrs(spriteName)} alt="${esc(displayName)}"><div><span>${isChampions ? 'Champions-Set' : 'Standard-Set'}</span><h2>${esc(displayName)}</h2>${spriteName !== mon.pokemon_name ? `<small>${esc(mon.pokemon_name)}</small>` : ''}${typeChips(displayEntry || baseStatsEntry)}</div></div>
       ${editable ? `<button class="btn btn-danger btn-sm" onclick="window.builderRemovePokemon('${mon.id}')">Entfernen</button>` : ''}
     </div>
+    ${championsWarning ? `<div class="builder-rules-warning"><strong>Champions-Hinweis</strong><span>${esc(championsWarning)}</span></div>` : ''}
     <div class="builder-editor-grid">
       <div class="builder-editor-main">
         <div class="builder-fields">
-          <label class="builder-field"><span>Spitzname</span><input class="form-input" id="builder-nickname" value="${esc(mon.nickname || '')}" ${editable ? '' : 'disabled'}></label>
-          <label class="builder-field"><span>Item</span><select class="form-select builder-picker-select" id="builder-item" data-picker-help="builder-item-help" ${editable ? '' : 'disabled'}>${groupItemOptions(filteredReferences.items || [], mon.item || '')}</select>${selectedInfo(filteredReferences.items || [], mon.item, 'builder-item-help')}</label>
-          <label class="builder-field"><span>Fähigkeit</span><select class="form-select builder-picker-select" id="builder-ability" data-picker-help="builder-ability-help" ${editable ? '' : 'disabled'}>${selectOptions(abilityOptions, mon.ability || '', ability => `${ability.display_name}${ability.is_hidden ? ' · Hidden' : ''}`)}</select>${selectedInfo(abilityOptions, mon.ability, 'builder-ability-help')}</label>
-          <label class="builder-field"><span>Wesen</span><select class="form-select" id="builder-nature" ${editable ? '' : 'disabled'}>${natureOptions(mon.nature || '')}</select></label>
-          ${formOptionsDisplayFor(mon, formsBySpecies, baseCatalogEntry || catalogEntry, mode)}
-          <label class="builder-field"><span>Level</span><input class="form-input" id="builder-level" type="number" min="1" max="100" value="${isChampions ? 50 : Number(mon.level) || 50}" ${isChampions || !editable ? 'disabled' : ''}></label>
+          <div class="builder-field builder-choice-field"><span>Item</span><select class="form-select builder-picker-select builder-native-choice" id="builder-item" data-picker-help="builder-item-help" data-choice-kind="item" ${editable ? '' : 'disabled'}>${groupItemOptions(filteredReferences.items || [], mon.item || '')}</select>${selectedChoiceCard(filteredReferences.items || [], mon.item, 'builder-item', 'item', editable)}${selectedInfo(filteredReferences.items || [], mon.item, 'builder-item-help')}</div>
+          <label class="builder-field"><span>Fähigkeit</span><select class="form-select builder-picker-select" id="builder-ability" data-picker-help="builder-ability-help" ${editable ? '' : 'disabled'}>${selectOptions(abilityOptions, mon.ability || '', ability => `${catalogDisplayName(ability, ability.display_name)}${catalogAliasText(ability) ? ` · ${catalogAliasText(ability)}` : ''}${ability.is_hidden ? ' · Hidden' : ''}`)}</select>${selectedInfo(abilityOptions, mon.ability, 'builder-ability-help')}</label>
+          <label class="builder-field builder-field-compact"><span>Wesen</span><select class="form-select" id="builder-nature" ${editable ? '' : 'disabled'}>${natureOptions(mon.nature || '')}</select><small class="builder-picker-help"></small></label>
+          ${formOptionsDisplayFor(effectiveMon, formsBySpecies, baseCatalogEntry || catalogEntry, mode)}
+          <label class="builder-field builder-field-compact"><span>Level</span><input class="form-input" id="builder-level" type="number" min="1" max="100" value="${isChampions ? 50 : Number(mon.level) || 50}" ${isChampions || !editable ? 'disabled' : ''}><small class="builder-picker-help"></small></label>
         </div>
         <div class="builder-moves">
           <h3>Moves</h3>
-          <div class="builder-move-grid">${moves.slice(0, 4).map((move, index) => `<label class="builder-move-field"><span>Move ${index + 1}</span><select class="form-select builder-picker-select" id="builder-move-${index}" data-move-detail="builder-move-${index}-detail" ${editable ? '' : 'disabled'}>${selectOptions(moveOptions, move, moveOptionLabel)}</select>${selectedMoveDetail(moveOptions, move, `builder-move-${index}-detail`)}</label>`).join('')}</div>
+          <div class="builder-move-grid">${moves.slice(0, 4).map((move, index) => `<div class="builder-move-field builder-choice-field"><span>Move ${index + 1}</span><select class="form-select builder-picker-select builder-native-choice" id="builder-move-${index}" data-choice-kind="move" data-move-detail="builder-move-${index}-detail" ${editable ? '' : 'disabled'}>${selectOptions(moveOptions, move, moveOptionLabel)}</select>${selectedChoiceCard(moveOptions, move, `builder-move-${index}`, 'move', editable)}${selectedMoveDetail(moveOptions, move, `builder-move-${index}-detail`)}</div>`).join('')}</div>
           <p class="builder-picker-note">${esc(RULE_PROFILE_LABELS[profile] || profile)} · ${moveOptions.length} Moves verfügbar${profile === 'champions' ? ' · Champions-Liste kann später per Override nachgeschärft werden' : ''}</p>
         </div>
       </div>
       <aside class="builder-live-stats">
         <div class="builder-panel-title"><span>Live Stats</span><strong>Lv. ${isChampions ? 50 : Number(mon.level) || 50}</strong></div>
-        <div id="builder-stat-preview">${statsMarkup(stats)}</div>
+        <div id="builder-stat-preview">${statsMarkup(stats, 'Stats fehlen im Katalog', mon.nature || '')}</div>
       </aside>
     </div>
     <div class="builder-distribution">
@@ -529,11 +926,13 @@ function renderEditor(sheet, mon, catalogEntry, baseCatalogEntry, formsBySpecies
         : `<div><h3>EV-Verteilung</h3><p>0 bis 252 pro Stat, maximal 510 insgesamt.</p>${spreadInputs('builder-ev', evs, 252, 'builder-ev-input')}<div class="builder-spread-total">EVs: <strong id="builder-spread-total">0</strong>/510</div><details class="builder-iv-details"><summary>IVs bearbeiten</summary>${spreadInputs('builder-iv', ivs, 31, 'builder-iv-input')}</details></div>`}
     </div>
     <div class="builder-actions"><span id="builder-save-status"></span>${editable ? `<button class="btn btn-primary" onclick="window.builderSavePokemon('${mon.id}')">Set speichern</button>` : ''}</div>
+    <div class="builder-choice-dock" id="builder-choice-dock" hidden></div>
   </section>`;
 }
 
-function renderSpeedPanel(pokemon, catalogMap, sheet) {
-  const order = speedOrder(pokemon, catalogMap, { mode: sheet.team_mode || 'standard' });
+function renderSpeedPanel(pokemon, catalogMap, sheet, formsBySpecies, items = []) {
+  const effectivePokemon = pokemon.map(mon => effectiveTeamMon(mon, catalogMap, formsBySpecies, items));
+  const order = speedOrder(effectivePokemon, catalogMap, { mode: sheet.team_mode || 'standard' });
   return `<section class="builder-card builder-speed-card"><div class="builder-panel-title"><span>Speed Order</span><strong>${order.filter(item => item.speed != null).length}</strong></div>
     <div class="builder-speed-list">${order.map((entry, index) => `<div class="builder-speed-row"><b>#${index + 1}</b><span>${esc(entry.pokemonName)}</span><strong>${entry.speed ?? '–'}</strong></div>`).join('') || '<div class="builder-empty-inline">Noch keine Pokémon.</div>'}</div>
   </section>`;
@@ -543,11 +942,11 @@ function defensiveMultiplier(attackType, defenderTypes = []) {
   return defenderTypes.reduce((value, defenderType) => value * (TYPE_CHART[attackType]?.[defenderType] ?? 1), 1);
 }
 
-function renderTeamDefensePanel(pokemon, catalogMap) {
+function renderTeamDefensePanel(pokemon, catalogMap, formsBySpecies, items = []) {
   const rows = TYPE_ORDER.map(type => {
     const counts = { immune: 0, resist: 0, neutral: 0, weak: 0 };
     pokemon.forEach(mon => {
-      const entry = catalogMap.get(mon.form_pokemon_id) || catalogMap.get(mon.pokemon_id);
+      const entry = effectiveTeamEntry(mon, catalogMap, formsBySpecies, items);
       const multiplier = defensiveMultiplier(type, entry?.types || []);
       if (multiplier === 0) counts.immune++;
       else if (multiplier < 1) counts.resist++;
@@ -570,8 +969,16 @@ function renderTeamDefensePanel(pokemon, catalogMap) {
   </section>`;
 }
 
-function renderTeamCheckPanel(pokemon, sheet) {
-  const ruleset = { team_size: 6, allow_duplicates: false, format: sheet.battle_format || 'singles', team_mode: sheet.team_mode || 'standard' };
+function renderTeamCheckPanel(pokemon, sheet, catalog = []) {
+  const ruleset = {
+    team_size: 6,
+    allow_duplicates: false,
+    format: sheet.battle_format || 'singles',
+    team_mode: sheet.team_mode || 'standard',
+    legalPokemonIds: (sheet.team_mode || 'standard') === 'champions'
+      ? new Set(catalog.filter(isChampionsLegalEntry).map(mon => mon.pokemon_id))
+      : null,
+  };
   const result = validateTeam(pokemon, ruleset);
   return `<section class="builder-card builder-check-card"><div class="builder-panel-title"><span>Team Check</span><strong>${result.errors ? 'Fehler' : result.warnings ? 'Hinweise' : 'OK'}</strong></div>
     <div class="builder-check-list">${result.issues.slice(0, 8).map(issue => `<div class="builder-check-item ${issue.level}"><b>${esc(issue.level)}</b><span>${esc(issue.message)}</span></div>`).join('') || '<div class="builder-empty-inline">Alle aktuell prüfbaren Punkte sehen gut aus.</div>'}</div>
@@ -582,6 +989,7 @@ export async function renderTeamBuilderPage(root, sheetId) {
   root.innerHTML = '<div class="hub-loading">Team Builder wird geladen…</div>';
   let selectedId = null;
   let showAdd = false;
+  let showImport = false;
 
   try {
     const [sheet, pokemon, catalog, formsResult, references] = await Promise.all([
@@ -603,20 +1011,38 @@ export async function renderTeamBuilderPage(root, sheetId) {
       if (!formsBySpecies.has(form.species_pokemon_id)) formsBySpecies.set(form.species_pokemon_id, []);
       formsBySpecies.get(form.species_pokemon_id).push(form);
     });
+    const catalogMap = makeCatalogMap(catalog, forms);
+    const repairImportedMegaRows = async () => {
+      if (!editable) return;
+      await Promise.all(pokemon.map(async mon => {
+        const baseEntry = importedMegaBaseEntry(mon, catalogMap);
+        if (!baseEntry) return;
+        const inferredForm = megaFormForItem({ ...mon, pokemon_id: baseEntry.pokemon_id }, formsBySpecies, references.items || []);
+        const patch = {
+          pokemon_id: baseEntry.pokemon_id,
+          pokemon_name: baseEntry.pokemon_name,
+          form_pokemon_id: inferredForm?.pokemon_id || baseEntry.pokemon_id,
+        };
+        const saved = await updatePokemonSet(mon.id, patch);
+        Object.assign(mon, saved);
+      }));
+    };
+    await repairImportedMegaRows();
     const formIdsForTeam = () => {
       const speciesIds = new Set(pokemon.map(mon => mon.pokemon_id).filter(Boolean));
       const formIds = forms.filter(form => speciesIds.has(form.species_pokemon_id)).map(form => form.pokemon_id);
-      return [...speciesIds, ...formIds];
+      const itemFormIds = pokemon.map(mon => megaFormForItem(mon, formsBySpecies, references.items || [])?.pokemon_id).filter(Boolean);
+      return [...speciesIds, ...formIds, ...itemFormIds];
     };
     let pokemonAbilities = await listPokemonAbilitiesForPokemon(formIdsForTeam()).catch(() => []);
     let pokemonMoves = await listPokemonMovesForPokemon(formIdsForTeam()).catch(() => []);
-    const catalogMap = makeCatalogMap(catalog, forms);
     selectedId = pokemon[0]?.id || null;
 
     const render = () => {
       const selected = pokemon.find(mon => mon.id === selectedId) || null;
       const selectedCatalogEntry = selected ? (catalogMap.get(selected.form_pokemon_id) || catalogMap.get(selected.pokemon_id)) : null;
       const selectedBaseEntry = selected ? catalogMap.get(selected.pokemon_id) : null;
+      const filteredReferences = filterReferencesForMode(references, ruleProfileForSheet(sheet));
       const modeLabel = (sheet.team_mode || 'standard') === 'champions' ? 'Champions' : 'Standard';
       root.innerHTML = `<div class="team-builder-page">
         <header class="builder-header">
@@ -625,20 +1051,22 @@ export async function renderTeamBuilderPage(root, sheetId) {
             <button class="btn btn-secondary btn-sm" onclick="location.hash='/teams'">Zurück</button>
             ${editable ? `<select class="form-select builder-format-select" onchange="window.builderSetFormat(this.value)"><option value="singles" ${sheet.battle_format === 'singles' ? 'selected' : ''}>Singles</option><option value="doubles" ${sheet.battle_format === 'doubles' ? 'selected' : ''}>Doubles</option></select>` : ''}
             ${editable ? `<select class="form-select builder-format-select" onchange="window.builderSetRulesProfile(this.value)" ${(sheet.team_mode || 'standard') === 'champions' ? 'disabled' : ''}>${Object.entries(RULE_PROFILE_LABELS).map(([value, label]) => `<option value="${value}" ${ruleProfileForSheet(sheet) === value ? 'selected' : ''}>${label}</option>`).join('')}</select>` : ''}
+            ${editable ? `<button class="btn btn-secondary btn-sm" onclick="window.builderToggleShowdownImport()">Showdown importieren</button>` : ''}
             <button class="btn btn-secondary btn-sm" onclick="window.builderCopyShowdown()">Showdown kopieren</button>
             ${editable ? `<button class="btn btn-primary btn-sm" onclick="window.builderToggleShare()">${sheet.visibility === 'public' ? 'Privat machen' : 'Team teilen'}</button>` : ''}
+            ${editable ? `<button class="btn btn-danger btn-sm" onclick="window.builderDeleteTeam()">Team löschen</button>` : ''}
           </div>
         </header>
         <div class="builder-layout">
-          ${renderTeamStrip(pokemon, selectedId, editable, catalogMap, sheet)}
+          ${renderTeamStrip(pokemon, selectedId, editable, catalogMap, sheet, formsBySpecies, filteredReferences.items || [])}
+          ${showImport && editable ? renderBuilderShowdownImport(editable) : ''}
           <div class="builder-detail-layout">
-            <main>${showAdd && editable ? renderAddPokemon(catalog, pokemon, sheet.team_mode || 'standard') : renderEditor(sheet, selected, selectedCatalogEntry, selectedBaseEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable)}</main>
-            <aside class="builder-right-rail">${renderSpeedPanel(pokemon, catalogMap, sheet)}${renderTeamDefensePanel(pokemon, catalogMap)}${renderTeamCheckPanel(pokemon, sheet)}</aside>
+            <main>${showAdd && editable ? renderAddPokemonCatalog(catalog, pokemon, sheet.team_mode || 'standard', formsBySpecies) : renderEditor(sheet, selected, selectedCatalogEntry, selectedBaseEntry, formsBySpecies, references, pokemonAbilities, pokemonMoves, editable, catalogMap)}</main>
+            <aside class="builder-right-rail">${renderSpeedPanel(pokemon, catalogMap, sheet, formsBySpecies, filteredReferences.items || [])}${renderTeamDefensePanel(pokemon, catalogMap, formsBySpecies, filteredReferences.items || [])}${renderTeamCheckPanel(pokemon, sheet, catalog)}</aside>
           </div>
         </div>
       </div>`;
-      const activeForm = selected ? selectedFormFor(selected, formsBySpecies) : null;
-      const filteredReferences = filterReferencesForMode(references, ruleProfileForSheet(sheet));
+      const activeForm = selected ? effectiveFormFor(selected, formsBySpecies, filteredReferences.items || []) : null;
       const megaStone = findMegaStone(activeForm, filteredReferences.items || []);
       const itemSelect = document.getElementById('builder-item');
       if (itemSelect && activeForm?.is_mega) {
@@ -651,12 +1079,16 @@ export async function renderTeamBuilderPage(root, sheetId) {
         const ability = defaultAbilityFor(selected, pokemonAbilities);
         if (ability) abilitySelect.value = ability.display_name;
       }
-      document.querySelectorAll('.builder-picker-select').forEach(select => updatePickerHelp(select));
+      document.querySelectorAll('.builder-picker-select').forEach(select => {
+        updatePickerHelp(select);
+        updateChoiceCard(select);
+      });
       window.refreshBuilderStatPreview?.();
     };
 
     window.builderSelectPokemon = id => { selectedId = id; showAdd = false; render(); };
-    window.builderShowAddPokemon = () => { showAdd = true; render(); };
+    window.builderShowAddPokemon = () => { showAdd = true; showImport = false; render(); };
+    window.builderToggleShowdownImport = () => { showImport = !showImport; showAdd = false; render(); };
     window.builderFilterCatalog = () => {
       const search = document.getElementById('builder-add-search')?.value.trim().toLowerCase() || '';
       const existing = new Set(pokemon.map(mon => mon.pokemon_id));
@@ -689,6 +1121,57 @@ export async function renderTeamBuilderPage(root, sheetId) {
       toast(`${selected.pokemon_name} hinzugefügt`, 'success');
       render();
     };
+    window.builderFilterCatalog = () => {
+      const filters = {
+        search: document.getElementById('builder-add-search')?.value || '',
+        type: document.getElementById('builder-add-type')?.value || 'all',
+        mega: document.getElementById('builder-add-mega')?.value || 'all',
+        sort: document.getElementById('builder-add-sort')?.value || 'name',
+      };
+      const filtered = addCatalogCandidates(catalog, pokemon, sheet.team_mode || 'standard', formsBySpecies, filters);
+      const results = document.getElementById('builder-add-results');
+      if (results) {
+        results.className = addPokemonResultsClass(filtered.length);
+        results.innerHTML = addPokemonResultsMarkup(filtered, formsBySpecies);
+      }
+      const count = document.getElementById('builder-add-count');
+      if (count) count.textContent = `${filtered.length} gefunden`;
+    };
+    window.builderSetAddType = type => {
+      const value = type || 'all';
+      const input = document.getElementById('builder-add-type');
+      if (input) input.value = value;
+      document.querySelectorAll('[data-builder-type]').forEach(button => button.classList.toggle('active', button.dataset.builderType === value));
+      window.builderFilterCatalog();
+    };
+    window.builderSetAddMega = mega => {
+      const value = mega || 'all';
+      const input = document.getElementById('builder-add-mega');
+      if (input) input.value = value;
+      document.querySelectorAll('[data-builder-mega]').forEach(button => button.classList.toggle('active', button.dataset.builderMega === value));
+      window.builderFilterCatalog();
+    };
+    window.builderAddPokemonFromCatalog = async selectedPokemonId => {
+      const selected = filterCatalogForMode(catalog, sheet.team_mode || 'standard').find(mon => mon.pokemon_id === selectedPokemonId);
+      if (!selected) { toast('Bitte Pokemon auswaehlen.', 'error'); return; }
+      const created = await addPokemonSet(sheet.id, selected, pokemon.length);
+      pokemon.push(created);
+      pokemonAbilities = await listPokemonAbilitiesForPokemon(formIdsForTeam()).catch(() => pokemonAbilities);
+      pokemonMoves = await listPokemonMovesForPokemon(formIdsForTeam()).catch(() => pokemonMoves);
+      selectedId = created.id;
+      showAdd = false;
+      toast(`${selected.pokemon_name} hinzugefuegt`, 'success');
+      render();
+    };
+    window.builderAddPokemon = () => window.builderAddPokemonFromCatalog(document.getElementById('builder-add-select')?.value);
+    const applyInferredMegaForms = async importedPokemon => {
+      await Promise.all(importedPokemon.map(async mon => {
+        const inferredForm = megaFormForItem(mon, formsBySpecies, references.items || []);
+        if (!inferredForm || mon.form_pokemon_id === inferredForm.pokemon_id) return;
+        const saved = await updatePokemonSet(mon.id, { form_pokemon_id: inferredForm.pokemon_id });
+        Object.assign(mon, saved);
+      }));
+    };
     window.refreshBuilderStatPreview = () => {
       const selected = pokemon.find(mon => mon.id === selectedId);
       if (!selected) return;
@@ -703,9 +1186,10 @@ export async function renderTeamBuilderPage(root, sheetId) {
       const total = Object.values(mode === 'champions' ? draft.dvs : draft.evs).reduce((sum, value) => sum + value, 0);
       const totalEl = document.getElementById('builder-spread-total');
       if (totalEl) totalEl.textContent = String(total);
-      const stats = calculatePokemonStats(draft, catalogMap.get(formId) || catalogMap.get(selected.pokemon_id), { mode });
+      const statsEntry = statsEntryFor(catalogMap.get(formId), catalogMap.get(selected.pokemon_id));
+      const stats = calculatePokemonStats(draft, statsEntry, { mode });
       const preview = document.getElementById('builder-stat-preview');
-      if (preview) preview.innerHTML = statsMarkup(stats);
+      if (preview) preview.innerHTML = statsMarkup(stats, 'Stats fehlen im Katalog', draft.nature || '');
     };
     window.builderSavePokemon = async id => {
       const selected = pokemon.find(mon => mon.id === id);
@@ -713,7 +1197,6 @@ export async function renderTeamBuilderPage(root, sheetId) {
       const mode = sheet.team_mode || 'standard';
       const patch = {
         form_pokemon_id: document.getElementById('builder-form')?.value || selected.pokemon_id,
-        nickname: document.getElementById('builder-nickname')?.value.trim() || null,
         item: document.getElementById('builder-item')?.value.trim() || null,
         ability: document.getElementById('builder-ability')?.value.trim() || null,
         nature: document.getElementById('builder-nature')?.value.trim() || null,
@@ -770,9 +1253,122 @@ export async function renderTeamBuilderPage(root, sheetId) {
       toast('Sichtbarkeit aktualisiert', 'success');
       render();
     };
+    window.builderDeleteTeam = async () => {
+      if (!editable) return;
+      if (!confirm('Team wirklich löschen?')) return;
+      await deleteSheet(sheet.id);
+      toast('Team gelöscht', 'success');
+      location.hash = '/teams';
+    };
     window.builderCopyShowdown = async () => {
       await navigator.clipboard.writeText(exportSheetAsShowdown(pokemon));
       toast('Showdown-Text kopiert', 'success');
+    };
+    window.builderImportShowdown = async () => {
+      const textarea = document.getElementById('builder-showdown-import');
+      const status = document.getElementById('builder-import-status');
+      const text = textarea?.value || '';
+      if (!text.trim()) {
+        if (status) status.textContent = 'Bitte Showdown-Text einfuegen.';
+        return;
+      }
+      try {
+        if (status) status.textContent = 'Import laeuft...';
+        const imported = await importShowdownIntoSheet(sheet.id, text);
+        pokemon.splice(0, pokemon.length, ...(imported?.length ? imported : await listPokemonForSheet(sheet.id)));
+        await applyInferredMegaForms(pokemon);
+        pokemonAbilities = await listPokemonAbilitiesForPokemon(formIdsForTeam()).catch(() => pokemonAbilities);
+        pokemonMoves = await listPokemonMovesForPokemon(formIdsForTeam()).catch(() => pokemonMoves);
+        selectedId = pokemon[0]?.id || null;
+        showImport = false;
+        showAdd = false;
+        toast('Showdown-Team importiert', 'success');
+        render();
+      } catch (err) {
+        if (status) status.textContent = err.message;
+        toast('Import fehlgeschlagen: ' + err.message, 'error');
+      }
+    };
+    let activeChoiceFieldId = null;
+    let activeChoiceKind = 'item';
+    let activeChoiceFilter = 'all';
+    const choiceOptionMatches = (option, kind, search, filter) => {
+      const group = option.parentElement?.label || '';
+      const haystack = [option.value, option.textContent, group, option.dataset.search, option.dataset.alias, option.dataset.info, option.dataset.moveType, option.dataset.moveClass].filter(Boolean).join(' ').toLowerCase();
+      const matchesSearch = !search || haystack.includes(search);
+      if (!matchesSearch) return false;
+      if (!filter || filter === 'all') return true;
+      if (kind === 'move') return option.dataset.moveType === filter || option.dataset.moveClass === filter;
+      return group === filter;
+    };
+    const renderChoiceDock = (search = '', cursorPosition = null) => {
+      const select = document.getElementById(activeChoiceFieldId);
+      const dock = document.getElementById('builder-choice-dock');
+      if (!select || !dock) return;
+      const kind = activeChoiceKind;
+      const options = Array.from(select.options).filter(option => option.value);
+      const filterValues = [...new Set(options.flatMap(option => {
+        if (kind === 'move') return [option.dataset.moveType, option.dataset.moveClass].filter(Boolean);
+        return [option.parentElement?.label].filter(Boolean);
+      }))].slice(0, 18);
+      const normalizedSearch = String(search || '').trim().toLowerCase();
+      const filtered = options.filter(option => choiceOptionMatches(option, kind, normalizedSearch, activeChoiceFilter));
+      const title = kind === 'move' ? 'Move auswaehlen' : 'Item auswaehlen';
+      const resultClass = filtered.length <= 6 ? 'builder-choice-results compact' : 'builder-choice-results';
+      dock.hidden = false;
+      dock.innerHTML = `<div class="builder-choice-dock-head">
+          <div><span>${esc(title)}</span><strong>${esc(select.selectedOptions?.[0]?.value || 'Keine Auswahl')}</strong></div>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="window.closeBuilderChoicePicker()">Schliessen</button>
+        </div>
+        <div class="builder-choice-tools">
+          <input class="form-input" id="builder-choice-search" type="search" placeholder="Suchen..." value="${esc(search)}" oninput="window.builderFilterChoicePicker(this.value, this.selectionStart)">
+          <div class="builder-choice-filters">
+            <button type="button" class="${activeChoiceFilter === 'all' ? 'active' : ''}" data-choice-filter="all" onclick="window.builderSetChoiceFilter(this.dataset.choiceFilter)">Alle</button>
+            ${filterValues.map(value => `<button type="button" class="${activeChoiceFilter === value ? 'active' : ''}" data-choice-filter="${esc(value)}" onclick="window.builderSetChoiceFilter(this.dataset.choiceFilter)">${esc(TYPE_LABELS[value] || value)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="${resultClass}">
+          ${filtered.map(option => `<button type="button" class="builder-choice-result ${option.selected ? 'selected' : ''}" data-choice-value="${esc(option.value)}" onclick="window.builderApplyChoice('${esc(activeChoiceFieldId)}', this.dataset.choiceValue)">
+            ${choiceSummaryFromOption(option, kind, 'result')}
+          </button>`).join('') || '<div class="builder-empty-inline">Keine Treffer.</div>'}
+        </div>`;
+      const searchInput = document.getElementById('builder-choice-search');
+      if (searchInput) {
+        searchInput.focus();
+        const cursor = Number.isInteger(cursorPosition) ? cursorPosition : searchInput.value.length;
+        searchInput.setSelectionRange(cursor, cursor);
+      }
+    };
+    window.openBuilderChoicePicker = (fieldId, kind = 'item') => {
+      const select = document.getElementById(fieldId);
+      if (!select || select.disabled) return;
+      activeChoiceFieldId = fieldId;
+      activeChoiceKind = kind;
+      activeChoiceFilter = 'all';
+      renderChoiceDock();
+    };
+    window.closeBuilderChoicePicker = () => {
+      const dock = document.getElementById('builder-choice-dock');
+      if (dock) {
+        dock.hidden = true;
+        dock.replaceChildren();
+      }
+      activeChoiceFieldId = null;
+    };
+    window.builderFilterChoicePicker = (search, cursorPosition = null) => renderChoiceDock(search, cursorPosition);
+    window.builderSetChoiceFilter = filter => {
+      activeChoiceFilter = filter || 'all';
+      renderChoiceDock(document.getElementById('builder-choice-search')?.value || '');
+    };
+    window.builderApplyChoice = (fieldId, value) => {
+      const select = document.getElementById(fieldId);
+      if (!select || select.disabled) return;
+      select.value = value || '';
+      updatePickerHelp(select);
+      updateMoveDetail(select);
+      updateChoiceCard(select);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      window.closeBuilderChoicePicker();
     };
     window.moveHubPokemon = async (setId, direction) => {
       const index = pokemon.findIndex(mon => mon.id === setId);
@@ -793,6 +1389,7 @@ export async function renderTeamBuilderPage(root, sheetId) {
       if (event.target?.classList?.contains('builder-picker-select')) {
         updatePickerHelp(event.target);
         updateMoveDetail(event.target);
+        updateChoiceCard(event.target);
       }
       if (event.target?.id === 'builder-form') {
         const selected = pokemon.find(mon => mon.id === selectedId);

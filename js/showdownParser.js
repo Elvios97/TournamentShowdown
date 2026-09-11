@@ -1,6 +1,23 @@
 // ─── SHOWDOWN IMPORT/EXPORT PARSER ─────────────────────────────────
 // 1:1 Logik aus dem ursprünglichen app.js übernommen, nur modularisiert.
 
+const STAT_KEYS = ['HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe'];
+
+function parseStatSpread(text, max = 252) {
+  const result = {};
+  String(text || '').split('/').forEach(part => {
+    const trimmed = part.trim();
+    const match = trimmed.match(/^(\d+)\s+(HP|Atk|Def|SpA|SpD|Spe)$/i);
+    const reverseMatch = trimmed.match(/^(HP|Atk|Def|SpA|SpD|Spe)\s+(\d+)$/i);
+    const statText = match?.[2] || reverseMatch?.[1];
+    const valueText = match?.[1] || reverseMatch?.[2];
+    if (!statText || !valueText) return;
+    const stat = STAT_KEYS.find(key => key.toLowerCase() === statText.toLowerCase());
+    if (stat) result[stat] = Math.max(0, Math.min(max, parseInt(valueText, 10)));
+  });
+  return result;
+}
+
 export function parsePokemonHeader(line) {
   let raw = String(line || '').trim();
   let item = '';
@@ -28,7 +45,7 @@ export function parseShowdown(text) {
   for (const block of blocks) {
     const lines = block.trim().split('\n').map(l => l.trim()).filter(Boolean);
     if (!lines.length) continue;
-    const mon = { name: '', nickname: '', item: '', ability: '', tera: '', nature: '', evs: { HP: 0, Atk: 0, Def: 0, SpA: 0, SpD: 0, Spe: 0 }, ivs: {}, moves: [] };
+    const mon = { name: '', nickname: '', item: '', ability: '', tera: '', nature: '', evs: { HP: 0, Atk: 0, Def: 0, SpA: 0, SpD: 0, Spe: 0 }, ivs: {}, dvs: {}, moves: [] };
     const header = parsePokemonHeader(lines[0]);
     mon.name = header.name;
     mon.nickname = header.nickname;
@@ -39,15 +56,11 @@ export function parseShowdown(text) {
       else if (l.startsWith('Tera Type:')) mon.tera = l.replace('Tera Type:', '').trim();
       else if (l.includes('Nature')) mon.nature = l.replace('Nature', '').trim();
       else if (l.startsWith('EVs:')) {
-        l.replace('EVs:', '').trim().split('/').forEach(p => {
-          const m = p.trim().match(/(\d+)\s+(\w+)/);
-          if (m) mon.evs[m[2]] = parseInt(m[1]);
-        });
+        mon.evs = { ...mon.evs, ...parseStatSpread(l.replace('EVs:', '').trim(), 252) };
       } else if (l.startsWith('IVs:')) {
-        l.replace('IVs:', '').trim().split('/').forEach(p => {
-          const m = p.trim().match(/(\d+)\s+(\w+)/);
-          if (m) mon.ivs[m[2]] = parseInt(m[1]);
-        });
+        mon.ivs = { ...mon.ivs, ...parseStatSpread(l.replace('IVs:', '').trim(), 31) };
+      } else if (/^#?\s*Champions stat points\s*:/i.test(l)) {
+        mon.dvs = parseStatSpread(l.replace(/^#?\s*Champions stat points\s*:/i, '').trim(), 32);
       } else if (l.startsWith('- ')) mon.moves.push(l.slice(2).trim());
     }
     if (mon.name) mons.push(mon);
